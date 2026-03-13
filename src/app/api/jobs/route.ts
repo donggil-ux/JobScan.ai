@@ -13,6 +13,15 @@ const WANTED_HEADERS: Record<string, string> = {
   'x-wanted-language': 'ko',
 }
 
+// ─── Saramin 요청 헤더 ───────────────────────────────────────────────────────
+const SARAMIN_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://www.saramin.co.kr/',
+}
+
 // ─── Remember 요청 헤더 ──────────────────────────────────────────────────────
 const REMEMBER_HEADERS: Record<string, string> = {
   'User-Agent':
@@ -26,6 +35,15 @@ const REMEMBER_HEADERS: Record<string, string> = {
 // Remember job_category_ids for design roles (UX·UI·Product·Brand·Web)
 // Discovered via network inspection: 376=브랜드, 377=제품디자인, 378·379·380·381=웹/UI, 393=UX
 const REMEMBER_DESIGN_CAT_IDS = [376, 377, 378, 379, 380, 381, 393]
+
+// ─── Jobkorea 요청 헤더 ──────────────────────────────────────────────────────
+const JOBKOREA_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://www.jobkorea.co.kr/',
+}
 
 // ─── 공용 헬퍼 ──────────────────────────────────────────────────────────────
 
@@ -136,7 +154,10 @@ async function fetchWantedPage(query: string, offset: number, limit: number): Pr
 // Remember 리스팅 아이템 → Job 타입으로 변환
 // "(주)", "(유)", "(사)" 등 법인 형태 표기 제거
 function cleanCompanyName(name: string): string {
-  return name.replace(/^\(주\)|\(유\)|\(사\)|\(재\)/g, '').trim()
+  return name
+    .replace(/^(주식회사\s*|\(주\)|\(유\)|\(사\)|\(재\))/g, '') // prefix
+    .replace(/(\(주\)|\(유\)|\(사\)|\(재\)|\s*주식회사)$/g, '') // suffix
+    .trim()
 }
 
 function toRememberJob(item: any): Job {
@@ -171,7 +192,7 @@ function toRememberJob(item: any): Job {
   }
 }
 
-// ─── 리멤버 관련성 필터 ────────────────────────────────────────────────────────
+// ─── 관련성 필터 ─────────────────────────────────────────────────────────────
 // 1단계: 명확히 관련 있는 키워드 → 항상 통과 (블록리스트보다 우선)
 const REMEMBER_ALLOW_PATTERNS = [
   /프로덕트\s*디자이너|Product\s*Designer/i,
@@ -183,10 +204,14 @@ const REMEMBER_ALLOW_PATTERNS = [
 
 // 2단계: 명백히 비관련 키워드 → 제외
 const REMEMBER_BLOCK_PATTERNS = [
-  /인턴/i,                                    // 인턴
+  /인턴|intern/i,                             // 인턴 (한/영)
   /주니어|Jr\./i,                             // 주니어
   /사원[-·~]주임|주임급|사원급/i,              // 사원/주임 직급
   /1[~-]3년\s*이하/i,                         // 경력 1~3년 이하
+  /신입[~·\/\s]*\d+년[차]?/i,                // 신입~3년차, 신입~5년 등 범위 표기
+  /신입[\/·]\s*경력/i,                        // 신입/경력 병렬 채용 (신입도 OK → 시니어 무관)
+  /[0-3]년[차]?\s*(이하|미만|까지)/i,         // 3년 이하 / 3년차 미만 / 3년까지
+  /경력\s*[0-3]년\s*(이하|미만)/i,            // 경력 3년 이하 / 경력 2년 미만
   /광고/i,                                    // 광고대행, 광고회사
   /그래픽\s*디자이너/i,
   /영상\s*디자이너/i,
@@ -197,6 +222,8 @@ const REMEMBER_BLOCK_PATTERNS = [
   /패키지\s*디자이너/i,
   /VMD/i,
   /3D\s*디자이너/i,
+  /썸네일|배너\s*디자이너|디자이너.*배너/i,    // 썸네일/배너 디자이너
+  /퍼블리셔|퍼블리싱/i,                       // 웹 퍼블리셔
   /캐릭터.*디자이너|Character.*디자이너/i,
   /마케팅\s*디자이너/i,
   /콘텐츠\s*디자이너|컨텐츠\s*디자이너/i,
@@ -211,13 +238,35 @@ const REMEMBER_BLOCK_PATTERNS = [
   /Brand\s*Designer/i,                       // Brand Designer (영문)
 ]
 
-function isRelevantRememberJob(title: string): boolean {
+function isRelevantDesignJob(title: string): boolean {
   // 1. 명확히 관련 키워드 → 항상 통과 (블록보다 우선)
   if (REMEMBER_ALLOW_PATTERNS.some((p) => p.test(title))) return true
   // 2. 명백히 비관련 키워드 → 제외
   if (REMEMBER_BLOCK_PATTERNS.some((p) => p.test(title))) return false
   // 3. "브랜드" 포함 포지션 전체 제외 (allowlist 통과한 경우는 이미 위에서 return)
   if (/브랜드/i.test(title)) return false
+  return true
+}
+
+// ─── 사람인 전용 관련성 필터 ─────────────────────────────────────────────────
+// 사람인 키워드 검색은 결과가 넓어서 개발자·엔지니어·영업 등이 다수 혼입됨.
+// 제목에 명시적인 디자인 키워드가 없으면 즉시 제외 (allow→block 순 적용).
+const SARAMIN_MUST_HAVE = [
+  /디자이너/,           // 프로덕트 디자이너, UX 디자이너 …
+  /Designer/i,          // Product Designer (영문)
+  /UX\s*Research/i,     // UX Researcher
+  /Head\s*of\s*Design/i,
+  /Design\s*(Lead|Head|Director|Manager)/i,
+  /디자인\s*(리드|팀장|헤드|디렉터|매니저|시스템|파트장)/,
+]
+
+function isSaraminDesignJob(title: string): boolean {
+  // 1. 제목에 디자인 키워드 없으면 즉시 제외
+  if (!SARAMIN_MUST_HAVE.some((p) => p.test(title))) return false
+  // 2. 공통 블록 패턴 적용
+  if (REMEMBER_BLOCK_PATTERNS.some((p) => p.test(title))) return false
+  // 3. 브랜드 포지션 제외 (allow 패턴 통과 제외)
+  if (/브랜드/i.test(title) && !REMEMBER_ALLOW_PATTERNS.some((p) => p.test(title))) return false
   return true
 }
 
@@ -233,19 +282,252 @@ async function fetchRememberPage(page: number, limit: number): Promise<any[]> {
   return Array.isArray(json?.data) ? json.data : []
 }
 
+// ─── Saramin ──────────────────────────────────────────────────────────────────
+
+// 사람인 검색 결과 HTML → 공고 배열 파싱
+function parseSaraminHTML(html: string): Array<{
+  id: string
+  title: string
+  url: string
+  companyName: string
+  conditions: string[]
+  deadline: string | null
+}> {
+  const results: ReturnType<typeof parseSaraminHTML> = []
+
+  // item_recruit 블록 단위로 분리 (value="REC_ID" 기준)
+  const chunks = html.split('<div class="item_recruit" value="')
+  chunks.shift() // 첫 번째는 블록 이전 헤더
+
+  for (const chunk of chunks) {
+    const idMatch = chunk.match(/^(\d+)"/)
+    if (!idMatch) continue
+    const id = idMatch[1]
+
+    // 제목: <h2 class="job_tit"> 안의 title 속성
+    const titleMatch = chunk.match(/<h2 class="job_tit">[\s\S]{0,300}?title="([^"]+)"/)
+    if (!titleMatch) continue
+    const title = titleMatch[1].trim()
+
+    // URL
+    const hrefMatch = chunk.match(/href="(\/zf_user\/jobs\/relay\/view\?[^"]+)"/)
+    const url = hrefMatch
+      ? `https://www.saramin.co.kr${hrefMatch[1].replace(/&amp;/g, '&')}`
+      : `https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=${id}`
+
+    // 회사명: corp_name 안의 <a> 텍스트
+    const corpMatch = chunk.match(/class="corp_name"[\s\S]{0,400}?<a[^>]*>\s*([\s\S]*?)\s*<\/a>/)
+    const companyName = corpMatch ? corpMatch[1].replace(/<[^>]+>/g, '').trim() : '–'
+
+    // 조건 (지역·경력·학력·고용형태)
+    const condBlock = chunk.match(/<div class="job_condition">([\s\S]*?)<\/div>/)
+    const conditions: string[] = []
+    if (condBlock) {
+      for (const m of condBlock[1].matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)) {
+        const text = m[1].replace(/<[^>]+>/g, '').trim()
+        if (text) conditions.push(text)
+      }
+    }
+
+    // 마감일: "~ 04/12(일)" → "2026-04-12", "채용시" → null
+    const dateMatch = chunk.match(/<span class="date">([^<]+)<\/span>/)
+    let deadline: string | null = null
+    if (dateMatch) {
+      const dmatch = dateMatch[1].match(/(\d{1,2})\/(\d{1,2})/)
+      if (dmatch) {
+        const now = new Date()
+        const m = parseInt(dmatch[1])
+        const d = parseInt(dmatch[2])
+        const year = m < now.getMonth() + 1 ? now.getFullYear() + 1 : now.getFullYear()
+        deadline = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      }
+    }
+
+    results.push({ id, title, url, companyName, conditions, deadline })
+  }
+
+  return results
+}
+
+// 사람인 파싱 아이템 → Job 타입 변환
+function toSaraminJob(item: ReturnType<typeof parseSaraminHTML>[number]): Job {
+  // 경력 파싱: "경력3년↑", "경력 3~5년", "신입·경력" 등
+  const expCond = item.conditions.find((c) => /경력|신입/.test(c))
+  let minYears = 3
+  if (expCond) {
+    const m = expCond.match(/(\d+)\s*년/)
+    if (m) minYears = parseInt(m[1])
+    else if (/신입/.test(expCond) && !/경력/.test(expCond)) minYears = 0
+  }
+
+  const empRaw = item.conditions.find((c) => /정규직|계약직|프리랜서/.test(c))
+  const employment_type: EmploymentType =
+    empRaw === '계약직' ? '계약직' : empRaw === '프리랜서' ? '프리랜서' : '정규직'
+
+  const numId = parseInt(item.id) % 100000
+
+  return {
+    job_id: `saramin_${item.id}`,
+    source_platform: 'saramin',
+    company: {
+      name: cleanCompanyName(item.companyName),
+      logo_url: '',
+      company_size: getCompanySize(item.companyName),
+    },
+    position: { title: item.title, url: item.url },
+    employment_type,
+    experience_req: { min_years: minYears, max_years: null },
+    tags: extractTags(item.title, ''),
+    deadline: item.deadline,
+    match_score: getMatchScore(numId, 0),
+  }
+}
+
+// 사람인 검색 HTML fetch
+async function fetchSaraminPage(query: string, page: number): Promise<string> {
+  const params = new URLSearchParams({
+    searchType: 'search',
+    searchword: query,
+    recruitPage: String(page),
+    recruitPageCount: '40',
+    recruitSort: 'reg_dt',
+  })
+  const url = `https://www.saramin.co.kr/zf_user/search/recruit?${params}`
+  const res = await fetch(url, { headers: SARAMIN_HEADERS, next: { revalidate: 1800 } })
+  if (!res.ok) throw new Error(`Saramin ${res.status}`)
+  return res.text()
+}
+
+// ─── Jobkorea ────────────────────────────────────────────────────────────────
+
+interface JobkoreaCard {
+  id: string
+  title: string
+  company: string
+  logoUrl: string
+  deadline: string | null
+  isNewbie: boolean
+}
+
+// HTML 태그·엔티티 제거 유틸
+function stripHtmlTags(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#\d+;/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// 잡코리아 HTML에서 data-sentry-component="CardJob" 단위로 공고 추출
+function parseJobkoreaHTML(html: string): JobkoreaCard[] {
+  const results: JobkoreaCard[] = []
+  const parts = html.split('data-sentry-component="CardJob"')
+
+  for (let i = 1; i < parts.length; i++) {
+    const section = parts[i]
+
+    // ID: 첫 GI_Read href에서 추출
+    const idMatch = section.match(/GI_Read\/(\d+)/)
+    if (!idMatch) continue
+    const id = idMatch[1]
+
+    // GI_Read 링크 텍스트 추출 (빈 텍스트 제외) → 첫 번째=제목, 두 번째=회사명
+    const linkRe = /href="[^"]*GI_Read\/\d+[^"]*"[^>]*>([\s\S]*?)<\/a>/g
+    const texts: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = linkRe.exec(section)) !== null) {
+      const txt = stripHtmlTags(m[1]).trim()
+      if (txt) texts.push(txt)
+    }
+    const title = texts[0] ?? ''
+    const company = texts[1] ?? ''
+    if (!title) continue
+
+    // plaintext (태그 제거)
+    const plainText = stripHtmlTags(section)
+
+    // 마감일: MM/DD(요일) 마감 → 2026-MM-DD
+    const dm = plainText.match(/(\d{2})\/(\d{2})\([가-힣]\)\s*마감/)
+    const deadline = dm ? `2026-${dm[1]}-${dm[2]}` : null
+
+    // 신입 여부: plaintext에 "신입" 포함
+    const isNewbie = /신입/.test(plainText)
+
+    // 로고 URL
+    const logoM = section.match(/src="(https?:\/\/imgs\.jobkorea\.co\.kr[^"?]+)/)
+    const logoUrl = logoM?.[1] ?? ''
+
+    results.push({ id, title, company, logoUrl, deadline, isNewbie })
+  }
+
+  return results
+}
+
+// 잡코리아 공고 관련성 필터
+function isJobkoreaDesignJob(card: JobkoreaCard): boolean {
+  // 1. 디자인 직군 키워드 필수 (SARAMIN_MUST_HAVE 재사용)
+  if (!SARAMIN_MUST_HAVE.some((p) => p.test(card.title))) return false
+  // 2. 공통 블록 패턴 (비관련 직군, 주니어 등)
+  if (REMEMBER_BLOCK_PATTERNS.some((p) => p.test(card.title))) return false
+  // 3. 신입 공고 제외
+  if (card.isNewbie) return false
+  // 4. 브랜드 포지션 (allow 패턴 통과 제외)
+  if (/브랜드/i.test(card.title) && !REMEMBER_ALLOW_PATTERNS.some((p) => p.test(card.title))) return false
+  return true
+}
+
+// 잡코리아 카드 → Job 타입 변환
+function toJobkoreaJob(card: JobkoreaCard): Job {
+  const companyName = cleanCompanyName(card.company || '–')
+  const numId = parseInt(card.id) % 100000
+
+  return {
+    job_id: `jk_${card.id}`,
+    source_platform: 'jobkorea',
+    company: {
+      name: companyName,
+      logo_url: card.logoUrl,
+      company_size: getCompanySize(companyName),
+    },
+    position: {
+      title: card.title,
+      url: `https://www.jobkorea.co.kr/Recruit/GI_Read/${card.id}`,
+    },
+    employment_type: '정규직' as EmploymentType,
+    experience_req: { min_years: 5, max_years: null },
+    tags: extractTags(card.title, ''),
+    deadline: card.deadline,
+    match_score: getMatchScore(numId, 0),
+  }
+}
+
+// 잡코리아 검색 HTML fetch
+async function fetchJobkoreaPage(query: string, page: number): Promise<string> {
+  const url = `https://www.jobkorea.co.kr/Search/?stext=${encodeURIComponent(query)}&tabType=recruit&Page_No=${page}`
+  const res = await fetch(url, { headers: JOBKOREA_HEADERS, next: { revalidate: 1800 } })
+  if (!res.ok) throw new Error(`Jobkorea ${res.status}`)
+  return res.text()
+}
+
 // ─── Route Handler ───────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
-    // 원티드 + 리멤버 병렬 fetch
-    const [wPage1, wPage2, remPage1, remPage2] = await Promise.all([
-      fetchWantedPage('프로덕트 디자이너', 0, 20),
-      fetchWantedPage('프로덕트 디자이너', 20, 20),
-      fetchRememberPage(1, 20).catch(() => [] as any[]),
-      fetchRememberPage(2, 20).catch(() => [] as any[]),
-    ])
+    // 원티드 + 리멤버 + 사람인 + 잡코리아 병렬 fetch
+    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2] =
+      await Promise.all([
+        fetchWantedPage('프로덕트 디자이너', 0, 20),
+        fetchWantedPage('프로덕트 디자이너', 20, 20),
+        fetchRememberPage(1, 20).catch(() => [] as any[]),
+        fetchRememberPage(2, 20).catch(() => [] as any[]),
+        fetchSaraminPage('프로덕트 디자이너', 1).catch(() => ''),
+        fetchSaraminPage('UX 디자이너', 1).catch(() => ''),
+        fetchJobkoreaPage('프로덕트 디자이너', 1).catch(() => ''),
+        fetchJobkoreaPage('UX 디자이너', 1).catch(() => ''),
+      ])
 
-    // ── Wanted 중복 제거 후 변환
+    // ── Wanted 중복 제거 → 블록 패턴 필터 → 변환
     const seenWanted = new Set<number>()
     const wantedJobs: Job[] = [...wPage1, ...wPage2]
       .filter((item) => {
@@ -253,6 +535,7 @@ export async function GET() {
         seenWanted.add(item.id)
         return true
       })
+      .filter((item) => !REMEMBER_BLOCK_PATTERNS.some((p) => p.test(item.position ?? '')))
       .map(toWantedJob)
 
     if (wantedJobs.length === 0) throw new Error('Empty response from Wanted')
@@ -265,16 +548,43 @@ export async function GET() {
         seenRemember.add(item.id)
         return true
       })
-      .filter((item) => isRelevantRememberJob(item.title ?? ''))
+      .filter((item) => isRelevantDesignJob(item.title ?? ''))
       .map(toRememberJob)
 
+    // ── 사람인 파싱 → 중복 제거 → 필터 → 변환
+    const seenSaramin = new Set<string>()
+    const saraminJobs: Job[] = [...parseSaraminHTML(sarHtml1), ...parseSaraminHTML(sarHtml2)]
+      .filter((item) => {
+        if (seenSaramin.has(item.id)) return false
+        seenSaramin.add(item.id)
+        return true
+      })
+      .filter((item) => isSaraminDesignJob(item.title))
+      .map(toSaraminJob)
+
+    // ── 잡코리아 파싱 → 중복 제거 → 필터 → 변환
+    const seenJk = new Set<string>()
+    const jkJobs: Job[] = [...parseJobkoreaHTML(jkHtml1), ...parseJobkoreaHTML(jkHtml2)]
+      .filter((card) => {
+        if (seenJk.has(card.id)) return false
+        seenJk.add(card.id)
+        return true
+      })
+      .filter(isJobkoreaDesignJob)
+      .map(toJobkoreaJob)
+
     // ── 전체 합산
-    const jobs: Job[] = [...wantedJobs, ...rememberJobs]
+    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs]
 
     return NextResponse.json({
       jobs,
       total: jobs.length,
-      sources: { wanted: wantedJobs.length, remember: rememberJobs.length },
+      sources: {
+        wanted: wantedJobs.length,
+        remember: rememberJobs.length,
+        saramin: saraminJobs.length,
+        jobkorea: jkJobs.length,
+      },
       fetched_at: new Date().toISOString(),
     })
   } catch (err) {
