@@ -226,7 +226,7 @@ const REMEMBER_BLOCK_PATTERNS = [
   /퍼블리셔|퍼블리싱/i,                       // 웹 퍼블리셔
   /캐릭터.*디자이너|Character.*디자이너/i,
   /마케팅\s*디자이너/i,
-  /콘텐츠\s*디자이너|컨텐츠\s*디자이너/i,
+  /(콘텐츠|컨텐츠)\s*(디자이너|[Dd]esigner)/i,  // 콘텐츠/웹컨텐츠 디자이너 (한·영)
   /웹\s*디자이너|웹디자인\s*담당/i,            // 단순 웹디자이너/웹디자인 담당자 (UX/UI 없는 경우)
   /기획자/i,                                  // 서비스기획자, UX기획자 등 기획 직군
   /상품\s*기획|제품\s*기획|브랜드\s*기획/i,
@@ -238,6 +238,19 @@ const REMEMBER_BLOCK_PATTERNS = [
   /Brand\s*Designer/i,                       // Brand Designer (영문)
   /개발자/i,                                  // 프론트엔드·앱·iOS 개발자 등 (디자이너 아님)
   /상품\s*디자이너/i,                         // 패션·공산품 상품디자이너 (프로덕트 디자이너와 구별)
+  /반도체.*[Dd]esigner|module\s*[Dd]esigner/i, // RF반도체·모듈 하드웨어 직종
+  /파자마/i,                                  // 파자마 디자이너 (의류)
+  /People\s*팀|피플\s*팀/i,                   // HR·People팀 직군
+  /인하우스\s*디자이너/i,                     // 인하우스 디자이너 (비IT 분야)
+  /IP\s*크리에이티브/i,                       // IP크리에이티브 (비디자인 직군)
+  /뷰티\s*프로덕트/i,                         // 뷰티 프로덕트 디자이너 (물리적 제품)
+]
+
+// 하드 블록: UI/UX allow 패턴이 있어도 강제 제외 (직군 오분류 방지)
+const HARD_BLOCK_PATTERNS = [
+  /기획자/i,                              // UX/UI 기획자도 기획 직군으로 차단
+  /UX.{0,5}개발|UI.{0,5}개발/i,          // UI/UX 개발 경력직 (개발자)
+  /시각\s*디자이너|시각\s*디자인/i,       // 시각디자이너 (BI·VI 분야)
 ]
 
 // 헤드헌팅·인력파견 회사 제외 (회사명 기준, 전 플랫폼 공통)
@@ -247,6 +260,8 @@ const COMPANY_BLOCK_PATTERNS = [
 ]
 
 function isRelevantDesignJob(title: string): boolean {
+  // 0. 하드 블록: allow 패턴보다 우선 (UI/UX 포함해도 비관련 직군 강제 제외)
+  if (HARD_BLOCK_PATTERNS.some((p) => p.test(title))) return false
   // 1. 명확히 관련 키워드 → 항상 통과 (블록보다 우선)
   if (REMEMBER_ALLOW_PATTERNS.some((p) => p.test(title))) return true
   // 2. 명백히 비관련 키워드 → 제외
@@ -271,9 +286,11 @@ const SARAMIN_MUST_HAVE = [
 function isSaraminDesignJob(title: string): boolean {
   // 1. 제목에 디자인 키워드 없으면 즉시 제외
   if (!SARAMIN_MUST_HAVE.some((p) => p.test(title))) return false
-  // 2. 공통 블록 패턴 적용
+  // 2. 하드 블록 (UI/UX 포함해도 비관련 직군 강제 제외)
+  if (HARD_BLOCK_PATTERNS.some((p) => p.test(title))) return false
+  // 3. 공통 블록 패턴 적용
   if (REMEMBER_BLOCK_PATTERNS.some((p) => p.test(title))) return false
-  // 3. 브랜드 포지션 제외 (allow 패턴 통과 제외)
+  // 4. 브랜드 포지션 제외 (allow 패턴 통과 제외)
   if (/브랜드/i.test(title) && !REMEMBER_ALLOW_PATTERNS.some((p) => p.test(title))) return false
   return true
 }
@@ -478,11 +495,13 @@ function parseJobkoreaHTML(html: string): JobkoreaCard[] {
 function isJobkoreaDesignJob(card: JobkoreaCard): boolean {
   // 1. 디자인 직군 키워드 필수 (SARAMIN_MUST_HAVE 재사용)
   if (!SARAMIN_MUST_HAVE.some((p) => p.test(card.title))) return false
-  // 2. 공통 블록 패턴 (비관련 직군, 주니어 등)
+  // 2. 하드 블록 (UI/UX 포함해도 비관련 직군 강제 제외)
+  if (HARD_BLOCK_PATTERNS.some((p) => p.test(card.title))) return false
+  // 3. 공통 블록 패턴 (비관련 직군, 주니어 등)
   if (REMEMBER_BLOCK_PATTERNS.some((p) => p.test(card.title))) return false
-  // 3. 신입 공고 제외
+  // 4. 신입 공고 제외
   if (card.isNewbie) return false
-  // 4. 브랜드 포지션 (allow 패턴 통과 제외)
+  // 5. 브랜드 포지션 (allow 패턴 통과 제외)
   if (/브랜드/i.test(card.title) && !REMEMBER_ALLOW_PATTERNS.some((p) => p.test(card.title))) return false
   return true
 }
@@ -545,6 +564,7 @@ export async function GET() {
         seenWanted.add(item.id)
         return true
       })
+      .filter((item) => !HARD_BLOCK_PATTERNS.some((p) => p.test(item.position ?? '')))
       .filter((item) => !REMEMBER_BLOCK_PATTERNS.some((p) => p.test(item.position ?? '')))
       .map(toWantedJob)
 
