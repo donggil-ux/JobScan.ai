@@ -236,6 +236,14 @@ const REMEMBER_BLOCK_PATTERNS = [
   /\bBX\b/i,                                 // BX (Brand Experience) 디자이너
   /Brand\s*Experience/i,                     // Brand Experience 포지션
   /Brand\s*Designer/i,                       // Brand Designer (영문)
+  /개발자/i,                                  // 프론트엔드·앱·iOS 개발자 등 (디자이너 아님)
+  /상품\s*디자이너/i,                         // 패션·공산품 상품디자이너 (프로덕트 디자이너와 구별)
+]
+
+// 헤드헌팅·인력파견 회사 제외 (회사명 기준, 전 플랫폼 공통)
+const COMPANY_BLOCK_PATTERNS = [
+  /프로써치|Pro\s*Search/i,
+  /맨파워|Manpower/i,
 ]
 
 function isRelevantDesignJob(title: string): boolean {
@@ -575,8 +583,9 @@ export async function GET() {
       .filter(isJobkoreaDesignJob)
       .map(toJobkoreaJob)
 
-    // ── 전체 합산
+    // ── 전체 합산 + 헤드헌팅 회사 제외
     const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs]
+      .filter((job) => !COMPANY_BLOCK_PATTERNS.some((p) => p.test(job.company.name)))
 
     return NextResponse.json({
       jobs,
