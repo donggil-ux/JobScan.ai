@@ -6,6 +6,8 @@ import { Filters } from '@/types/job'
 interface FilterBarProps {
   filters: Filters
   onChange: (key: keyof Filters, value: string) => void
+  searchQuery: string
+  onSearchChange: (q: string) => void
   total: number | null // null = 로딩 중
   loading: boolean
   dataSource: 'wanted' | 'dummy'
@@ -40,11 +42,41 @@ const PLATFORM_OPTIONS = [
   { label: '사람인', value: 'saramin' },
 ]
 
-export default function FilterBar({ filters, onChange, total, loading, dataSource }: FilterBarProps) {
+export default function FilterBar({ filters, onChange, searchQuery, onSearchChange, total, loading, dataSource }: FilterBarProps) {
   return (
     <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
+      {/* 검색 입력 */}
+      <div className="px-5 pt-3 pb-2">
+        <div className="relative flex items-center">
+          <svg
+            className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none flex-shrink-0"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="회사명 또는 포지션 검색"
+            className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-gray-400 transition-colors placeholder-gray-400"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => onSearchChange('')}
+              className="absolute right-3 w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="검색 초기화"
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+      {/* 필터 칩 */}
       <div
-        className="flex items-center gap-2 px-5 py-3 overflow-x-auto scrollbar-hide"
+        className="flex items-center gap-2 px-5 py-2 overflow-x-auto scrollbar-hide"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <FilterChip

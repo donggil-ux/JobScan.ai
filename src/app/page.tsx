@@ -16,6 +16,7 @@ const INITIAL_FILTERS: Filters = {
 
 export default function HomePage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS)
+  const [searchQuery, setSearchQuery] = useState('')
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [dataSource, setDataSource] = useState<'wanted' | 'dummy'>('dummy')
@@ -44,7 +45,14 @@ export default function HomePage() {
   }
 
   const filteredJobs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
     return jobs.filter((job) => {
+      // 검색어 필터 (포지션 제목 + 회사명)
+      if (q) {
+        const titleMatch = job.position.title.toLowerCase().includes(q)
+        const companyMatch = job.company.name.toLowerCase().includes(q)
+        if (!titleMatch && !companyMatch) return false
+      }
       // 경력 필터
       if (filters.experience === '5-7') {
         if (!(job.experience_req.min_years >= 5 && job.experience_req.min_years <= 7)) return false
@@ -60,7 +68,7 @@ export default function HomePage() {
 
       return true
     })
-  }, [filters, jobs])
+  }, [filters, searchQuery, jobs])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,6 +77,8 @@ export default function HomePage() {
         <FilterBar
           filters={filters}
           onChange={handleFilterChange}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
           total={loading ? null : filteredJobs.length}
           loading={loading}
           dataSource={dataSource}
