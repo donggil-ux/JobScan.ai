@@ -323,8 +323,10 @@ function parseSaraminHTML(html: string): Array<{
     const condBlock = chunk.match(/<div class="job_condition">([\s\S]*?)<\/div>/)
     const conditions: string[] = []
     if (condBlock) {
-      for (const m of condBlock[1].matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)) {
-        const text = m[1].replace(/<[^>]+>/g, '').trim()
+      const spanRe = /<span[^>]*>([\s\S]*?)<\/span>/g
+      let sm: RegExpExecArray | null
+      while ((sm = spanRe.exec(condBlock[1])) !== null) {
+        const text = sm[1].replace(/<[^>]+>/g, '').trim()
         if (text) conditions.push(text)
       }
     }
