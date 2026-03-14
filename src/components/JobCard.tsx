@@ -150,12 +150,6 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
 
         {/* Middle: 회사 정보 */}
         <div className="flex items-center gap-2 mb-2">
-          {/* 회사 로고 placeholder */}
-          <div className="w-8 h-8 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-            <span className="text-gray-400 text-xs font-bold">
-              {job.company.name.slice(0, 1)}
-            </span>
-          </div>
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-sm font-medium text-gray-600 truncate">{job.company.name}</span>
             <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
