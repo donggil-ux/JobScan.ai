@@ -201,7 +201,7 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <span className="text-sm font-medium text-gray-600 truncate">{job.company.name}</span>
             <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
-              {COMPANY_SIZE_ICON[job.company.company_size]} {job.company.company_size}
+              {job.company.company_size}
             </span>
             {/* 회사 정보 토글 버튼 */}
             <button
