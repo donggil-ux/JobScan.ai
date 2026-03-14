@@ -26,12 +26,6 @@ const PLATFORM_COLOR: Record<string, string> = {
   saramin: 'bg-green-50 text-green-600',
 }
 
-const COMPANY_SIZE_ICON: Record<string, string> = {
-  대기업: '🏢',
-  중견기업: '🏬',
-  '중소/스타트업': '🚀',
-}
-
 function getMatchColor(score: number): string {
   if (score >= 85) return 'text-primary font-bold'
   if (score >= 75) return 'text-orange-500 font-semibold'
@@ -149,13 +143,11 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         </div>
 
         {/* Middle: 회사 정보 */}
-        <div className="flex items-center gap-2 mb-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-sm font-medium text-gray-600 truncate">{job.company.name}</span>
-            <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
-              {job.company.company_size}
-            </span>
-          </div>
+        <div className="flex items-center gap-1.5 mb-2 min-w-0">
+          <span className="text-sm font-medium text-gray-600 truncate">{job.company.name}</span>
+          <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
+            {job.company.company_size}
+          </span>
         </div>
 
         {/* 포지션 타이틀 */}
