@@ -9,6 +9,14 @@ interface JobCardProps {
   onHide: (id: string) => void
 }
 
+interface CompanyInfoState {
+  loading: boolean
+  revenue: number | null
+  employees: number | null
+  hasData: boolean
+  apiConfigured: { dart: boolean; nps: boolean }
+}
+
 const PLATFORM_LABEL: Record<string, string> = {
   wanted: '원티드',
   remember: '리멤버',
@@ -46,6 +54,16 @@ function getDeadlineBadge(deadline: string | null): { label: string; className: 
   return { label: `D-${diff}`, className: 'bg-gray-100 text-gray-500' }
 }
 
+function formatRevenue(amount: number): string {
+  const eok = Math.round(amount / 100_000_000)
+  if (eok >= 10_000) return `${(eok / 10_000).toFixed(1).replace(/\.0$/, '')}조원`
+  if (eok >= 100) return `${Math.round(eok / 100) * 100}억원`
+  if (eok >= 1) return `${eok}억원`
+  const baek = Math.round(amount / 10_000_000)
+  if (baek > 0) return `${baek}천만원`
+  return `${amount.toLocaleString()}원`
+}
+
 const SWIPE_THRESHOLD = 80
 
 export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
@@ -54,6 +72,10 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
   const [dismissed, setDismissed] = useState<'scrap' | 'hide' | null>(null)
   const startX = useRef(0)
   const cardRef = useRef<HTMLDivElement>(null)
+
+  // 회사 정보 상태
+  const [showInfo, setShowInfo] = useState(false)
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfoState | null>(null)
 
   const handleTouchStart = (e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX
@@ -83,6 +105,32 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
     if (Math.abs(offsetX) < 10) {
       window.open(job.position.url, '_blank', 'noopener,noreferrer')
     }
+  }
+
+  const handleInfoToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (showInfo) {
+      setShowInfo(false)
+      return
+    }
+    setShowInfo(true)
+    // 이미 로드된 경우 재요청 하지 않음
+    if (companyInfo !== null) return
+    setCompanyInfo({ loading: true, revenue: null, employees: null, hasData: false, apiConfigured: { dart: false, nps: false } })
+    fetch(`/api/company-info?name=${encodeURIComponent(job.company.name)}`)
+      .then((r) => r.json())
+      .then((data) =>
+        setCompanyInfo({
+          loading: false,
+          revenue: data.revenue ?? null,
+          employees: data.employees ?? null,
+          hasData: data.hasData ?? false,
+          apiConfigured: data.apiConfigured ?? { dart: false, nps: false },
+        }),
+      )
+      .catch(() =>
+        setCompanyInfo({ loading: false, revenue: null, employees: null, hasData: false, apiConfigured: { dart: false, nps: false } }),
+      )
   }
 
   const deadline = getDeadlineBadge(job.deadline)
@@ -147,13 +195,69 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
               {job.company.name.slice(0, 1)}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <span className="text-sm font-medium text-gray-600 truncate">{job.company.name}</span>
             <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
               {COMPANY_SIZE_ICON[job.company.company_size]} {job.company.company_size}
             </span>
+            {/* 회사 정보 토글 버튼 */}
+            <button
+              onClick={handleInfoToggle}
+              className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                showInfo
+                  ? 'bg-blue-100 text-blue-500'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              }`}
+              aria-label="회사 정보 보기"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
           </div>
         </div>
+
+        {/* 회사 정보 패널 (토글) */}
+        {showInfo && (
+          <div
+            className="mb-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {companyInfo?.loading ? (
+              /* 스켈레톤 */
+              <div className="flex items-center gap-3">
+                <div className="h-3 w-20 bg-gray-200 rounded animate-pulse" />
+                <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
+              </div>
+            ) : !companyInfo?.apiConfigured.dart && !companyInfo?.apiConfigured.nps ? (
+              /* API 키 미설정 */
+              <span className="text-xs text-gray-400">
+                🔑 API 미설정 — .env.local에 DART_API_KEY / NPS_API_KEY 등록 필요
+              </span>
+            ) : !companyInfo?.hasData ? (
+              /* 데이터 없음 */
+              <span className="text-xs text-gray-400">정보 없음 (공시 데이터 미확인)</span>
+            ) : (
+              /* 정보 표시 */
+              <div className="flex items-center gap-3 flex-wrap">
+                {companyInfo.revenue !== null && (
+                  <span className="text-xs text-gray-600 font-medium">
+                    💰 매출 {formatRevenue(companyInfo.revenue)}
+                  </span>
+                )}
+                {companyInfo.employees !== null && (
+                  <span className="text-xs text-gray-600 font-medium">
+                    👥 직원 {companyInfo.employees.toLocaleString()}명
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 포지션 타이틀 */}
         <h2 className="text-base font-bold text-gray-900 leading-snug mb-3">

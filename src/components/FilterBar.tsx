@@ -37,7 +37,6 @@ const PLATFORM_OPTIONS = [
   { label: '플랫폼 전체', value: 'all' },
   { label: '원티드', value: 'wanted' },
   { label: '리멤버', value: 'remember' },
-  { label: '서핏', value: 'surfit' },
   { label: '잡코리아', value: 'jobkorea' },
   { label: '사람인', value: 'saramin' },
 ]
