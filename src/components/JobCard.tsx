@@ -236,11 +236,6 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
                 <div className="h-3 w-20 bg-gray-200 rounded animate-pulse" />
                 <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
               </div>
-            ) : !companyInfo?.apiConfigured.dart && !companyInfo?.apiConfigured.nps ? (
-              /* API 키 미설정 */
-              <span className="text-xs text-gray-400">
-                🔑 API 미설정 — .env.local에 DART_API_KEY / NPS_API_KEY 등록 필요
-              </span>
             ) : !companyInfo?.hasData ? (
               /* 데이터 없음 */
               <span className="text-xs text-gray-400">정보 없음 (공시 데이터 미확인)</span>
