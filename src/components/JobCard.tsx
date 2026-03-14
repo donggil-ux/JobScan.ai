@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Job } from '@/types/job'
 
 interface JobCardProps {
@@ -67,6 +68,7 @@ function formatRevenue(amount: number): string {
 const SWIPE_THRESHOLD = 80
 
 export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
+  const router = useRouter()
   const [offsetX, setOffsetX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [dismissed, setDismissed] = useState<'scrap' | 'hide' | null>(null)
@@ -103,7 +105,14 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
 
   const handleCardClick = () => {
     if (Math.abs(offsetX) < 10) {
-      window.open(job.position.url, '_blank', 'noopener,noreferrer')
+      router.push(
+        `/company/${encodeURIComponent(job.company.name)}` +
+        `?position=${encodeURIComponent(job.position.title)}` +
+        `&url=${encodeURIComponent(job.position.url)}` +
+        `&logo=${encodeURIComponent(job.company.logo_url)}` +
+        `&size=${encodeURIComponent(job.company.company_size)}` +
+        `&score=${job.match_score}`
+      )
     }
   }
 
