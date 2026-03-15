@@ -89,6 +89,8 @@ function CompanyDetailInner({ name }: { name: string }) {
   const logo = params.get('logo') ?? ''
   const size = params.get('size') ?? ''
   const score = Number(params.get('score') ?? 0)
+  const platform = params.get('platform') ?? ''
+  const jobUrl = params.get('jobUrl') ?? ''
 
   const [info, setInfo] = useState<StartupInfoData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -96,14 +98,18 @@ function CompanyDetailInner({ name }: { name: string }) {
 
   useEffect(() => {
     if (!name) return
-    fetch(`/api/startup-info?companyName=${encodeURIComponent(name)}`)
+    const apiUrl =
+      `/api/startup-info?companyName=${encodeURIComponent(name)}` +
+      (platform ? `&platform=${encodeURIComponent(platform)}` : '') +
+      (jobUrl ? `&jobUrl=${encodeURIComponent(jobUrl)}` : '')
+    fetch(apiUrl)
       .then((r) => r.json())
       .then((data: StartupInfoData) => {
         setInfo(data)
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [name])
+  }, [name, platform, jobUrl])
 
   const insights = info?.data?.insights
   const hasData = info?.success && insights

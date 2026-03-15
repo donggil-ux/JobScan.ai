@@ -83,7 +83,9 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         `&url=${encodeURIComponent(job.position.url)}` +
         `&logo=${encodeURIComponent(job.company.logo_url)}` +
         `&size=${encodeURIComponent(job.company.company_size)}` +
-        `&score=${job.match_score}`
+        `&score=${job.match_score}` +
+        `&platform=${job.source_platform}` +
+        `&jobUrl=${encodeURIComponent(job.position.url)}`
       )
     }
   }
