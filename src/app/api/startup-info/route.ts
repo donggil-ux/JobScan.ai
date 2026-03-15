@@ -1,20 +1,5 @@
 import { NextResponse } from 'next/server'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  TheVC / 혁신의숲은 모두 React SPA입니다.
-//    단순 fetch로는 빈 HTML 껍데기만 받아옵니다 (JS 실행 전).
-//    실제 데이터 수집에는 Playwright(헤드리스 브라우저)가 필요합니다.
-//
-//  로컬 개발 환경에서 Playwright를 사용하려면:
-//    1. bun add -d playwright @playwright/test
-//    2. npx playwright install chromium
-//    3. 아래 scrapeWithPlaywright() 주석을 해제하고 사용하세요.
-//
-//  Vercel 서버리스 배포 시에는:
-//    - @sparticuz/chromium + playwright-core 패키지 조합 사용
-//    - 또는 Apify / BrightData 같은 외부 스크래핑 서비스 연동 권장
-// ─────────────────────────────────────────────────────────────────────────────
-
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 export interface StartupInsights {
   vision: string
@@ -30,7 +15,7 @@ interface StartupInfoResponse {
     company_name: string
     insights: StartupInsights
   }
-  _source?: string   // 디버그용: 데이터 출처
+  _source?: string
 }
 
 const EMPTY_INSIGHTS: StartupInsights = {
@@ -50,152 +35,104 @@ function stripTags(s: string): string {
     .replace(/\s+/g, ' ').trim()
 }
 
-function cleanName(name: string): string {
-  return name
-    .replace(/^(주식회사\s*|\(주\)|\(유\)|\(사\)|\(재\))/g, '')
-    .replace(/(\(주\)|\(유\)|\(사\)|\(재\)|\s*주식회사)$/g, '')
-    .trim()
-}
-
-// ─── __NEXT_DATA__ 파싱 ───────────────────────────────────────────────────────
-// Next.js SSR 앱은 HTML 내 <script id="__NEXT_DATA__"> 에 초기 데이터를 넣습니다.
-// SPA라도 일부 페이지(회사 상세)는 SSR로 데이터를 포함하는 경우가 있습니다.
-function extractNextData(html: string): any | null {
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
-  if (!m) return null
-  try { return JSON.parse(m[1]) } catch { return null }
-}
-
-// ─── TheVC 스크래퍼 ───────────────────────────────────────────────────────────
-// TheVC(thevc.kr)는 Next.js SPA — 단순 fetch는 빈 HTML 반환.
-// 현재는 __NEXT_DATA__ 파싱을 시도하고, 없으면 실패 처리합니다.
-//
-// ✅ Playwright 전환 방법 (로컬):
-//   const { chromium } = await import('playwright')
-//   const browser = await chromium.launch({ headless: true })
-//   const page = await browser.newPage()
-//   await page.goto(`https://thevc.kr/search?q=${encodeURIComponent(name)}`)
-//   await page.waitForSelector('.company-card', { timeout: 5000 })
-//   const html = await page.content()
-//   await browser.close()
-
-const THEVC_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml',
+// ─── 사람인 요청 헤더 ─────────────────────────────────────────────────────────
+const SARAMIN_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'ko-KR,ko;q=0.9',
-  Referer: 'https://thevc.kr/',
+  Referer: 'https://www.saramin.co.kr/',
 }
 
-async function scrapeTheVC(companyName: string): Promise<Partial<StartupInsights>> {
-  const name = cleanName(companyName)
+// ─── Step 1: 회사명으로 사람인 채용공고 검색 → CSN 추출 ───────────────────────
+async function fetchSaraminCSN(companyName: string): Promise<string | null> {
+  const url =
+    `https://www.saramin.co.kr/zf_user/search/recruit` +
+    `?searchType=search&searchword=${encodeURIComponent(companyName)}&recruitPageCount=5`
 
-  // Step 1: 검색 페이지 fetch (Next.js SSR이면 __NEXT_DATA__ 포함 가능)
-  const searchRes = await fetch(
-    `https://thevc.kr/search?keyword=${encodeURIComponent(name)}`,
-    { headers: THEVC_HEADERS, signal: AbortSignal.timeout(6000) }
-  )
-  const searchHtml = await searchRes.text()
-  const nextData = extractNextData(searchHtml)
+  const res = await fetch(url, {
+    headers: SARAMIN_HEADERS,
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) return null
 
-  // __NEXT_DATA__에서 검색 결과 추출 시도
-  const companies: any[] =
-    nextData?.props?.pageProps?.searchResult?.companies ??
-    nextData?.props?.pageProps?.companies ??
-    nextData?.props?.pageProps?.data?.companies ??
-    []
+  const html = await res.text()
 
-  if (!companies.length) throw new Error('TheVC: 검색 결과 없음 (SPA 렌더링 필요)')
+  // 첫 번째 item_recruit 블록에서 company-info CSN 추출
+  const chunks = html.split('<div class="item_recruit"')
+  if (chunks.length < 2) return null
 
-  const company = companies.find((c: any) =>
-    (c.name ?? '').includes(name) || name.includes(c.name ?? '')
-  ) ?? companies[0]
+  const firstChunk = chunks[1]
+  const csnMatch = firstChunk.match(/href="\/zf_user\/company-info\/view\?csn=([^"&]+)/)
+  if (!csnMatch) return null
 
-  // Step 2: 회사 상세 페이지 fetch
-  const slug: string = company.slug ?? company.id ?? ''
-  if (!slug) throw new Error('TheVC: slug 없음')
-
-  const profileRes = await fetch(
-    `https://thevc.kr/${slug}`,
-    { headers: THEVC_HEADERS, signal: AbortSignal.timeout(6000) }
-  )
-  const profileHtml = await profileRes.text()
-  const profileData = extractNextData(profileHtml)
-  const detail = profileData?.props?.pageProps?.company ?? profileData?.props?.pageProps ?? {}
-  const plain = stripTags(profileHtml)
-
-  // 데이터 추출
-  const vision: string =
-    detail.description ?? detail.intro ?? detail.tagline ??
-    profileHtml.match(/<meta name="description" content="([^"]{10,300})"/i)?.[1] ?? ''
-
-  const foundYear = plain.match(/설립\s*(\d{4})/) ?? plain.match(/(\d{4})\s*년\s*설립/)
-  let history = foundYear ? `${foundYear[1]}년 설립` : (detail.foundedYear ? `${detail.foundedYear}년 설립` : '')
-  const seriesM = plain.match(/(시리즈\s*[A-Z]|Series\s*[A-Z]|Seed|씨드)[^.]{0,60}(억|만원)/i)
-  if (seriesM) history += (history ? ', ' : '') + seriesM[0].replace(/\s+/g, ' ').trim()
-
-  const employee_count: number = detail.employeeCount ?? detail.employees ?? 0
-
-  let total_investment = ''
-  const inv = detail.totalInvestment ?? detail.investAmount ?? 0
-  if (inv > 0) total_investment = inv > 100_000_000 ? `${Math.round(inv / 100_000_000)}억원` : `${inv.toLocaleString()}원`
-
-  return { vision, history, employee_count, total_investment }
+  return decodeURIComponent(csnMatch[1])
 }
 
-// ─── 혁신의숲 스크래퍼 ────────────────────────────────────────────────────────
-// 혁신의숲(innoforest.co.kr)도 SPA — 마찬가지로 __NEXT_DATA__ 파싱 시도.
-//
-// ✅ Playwright 전환 방법 (로컬):
-//   await page.goto(`https://www.innoforest.co.kr/company/search?keyword=${name}`)
-//   await page.waitForSelector('[class*="CompanyCard"]', { timeout: 5000 })
-//   // 첫 번째 회사 클릭 후 상세 페이지에서 데이터 추출
+// ─── Step 2: CSN으로 사람인 기업정보 페이지 파싱 ─────────────────────────────
+async function scrapeSaraminCompany(csn: string): Promise<Partial<StartupInsights>> {
+  const url = `https://www.saramin.co.kr/zf_user/company-info/view?csn=${encodeURIComponent(csn)}`
 
-const INNO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml',
-  'Accept-Language': 'ko-KR,ko;q=0.9',
-  Referer: 'https://www.innoforest.co.kr/',
-}
+  const res = await fetch(url, {
+    headers: SARAMIN_HEADERS,
+    signal: AbortSignal.timeout(4000),
+  })
+  if (!res.ok) return {}
 
-async function scrapeInnoforest(companyName: string): Promise<Partial<StartupInsights>> {
-  const name = cleanName(companyName)
+  const html = await res.text()
+  const result: Partial<StartupInsights> = {}
 
-  const searchRes = await fetch(
-    `https://www.innoforest.co.kr/company/search?keyword=${encodeURIComponent(name)}`,
-    { headers: INNO_HEADERS, signal: AbortSignal.timeout(6000) }
-  )
-  const searchHtml = await searchRes.text()
-  const nextData = extractNextData(searchHtml)
+  // JSON-LD 파싱 (사람인 페이지에 Schema.org 데이터 포함)
+  try {
+    const jsonLdM = html.match(/<script type="application\/ld\+json">([\s\S]+?)<\/script>/)
+    if (jsonLdM) {
+      const ld = JSON.parse(jsonLdM[1])
+      // 임직원 수
+      const empVal = ld?.numberOfEmployees?.value ?? ld?.numberOfEmployees ?? null
+      if (empVal) {
+        result.employee_count = parseInt(String(empVal).replace(/,/g, ''), 10) || 0
+      }
+    }
+  } catch { /* skip */ }
 
-  const list: any[] =
-    nextData?.props?.pageProps?.companyList ??
-    nextData?.props?.pageProps?.companies ??
-    nextData?.props?.pageProps?.data ??
-    []
+  // 매출액 — HTML summary 섹션에서 추출
+  try {
+    // desc → tit 순서 (레이블 먼저, 값 나중)
+    const revM = html.match(/<p class="company_summary_desc">매출액<\/p>[\s\S]{0,200}?<strong class="company_summary_tit">\s*([^<\n]{2,40})<\/strong>/)
+    if (revM) {
+      result.revenue = revM[1].trim()
+    } else {
+      // tit → desc 순서도 시도
+      const revM2 = html.match(/<strong class="company_summary_tit">\s*([^<\n]{2,40})<\/strong>[\s\S]{0,200}?<p class="company_summary_desc">매출액<\/p>/)
+      if (revM2) result.revenue = revM2[1].trim()
+    }
+  } catch { /* skip */ }
 
-  if (!list.length) throw new Error('혁신의숲: 검색 결과 없음 (SPA 렌더링 필요)')
+  // 설립일 (history)
+  try {
+    const histM = html.match(/<p class="company_summary_desc">(\d{4}년[^<]*설립)<\/p>/)
+    if (histM) result.history = histM[1].trim()
+  } catch { /* skip */ }
 
-  const company = list.find((c: any) =>
-    (c.companyName ?? c.name ?? '').includes(name)
-  ) ?? list[0]
+  // 기업 비전/소개
+  try {
+    // 1차: 기업비전 섹션 내 본문
+    const visionM = html.match(
+      /기업비전[\s\S]{0,200}?<p class="txt">([\s\S]+?)<\/p>/
+    )
+    if (visionM) {
+      result.vision = stripTags(visionM[1]).slice(0, 500)
+    } else {
+      // 2차: 첫 번째 company_introduce 슬로건
+      const introM = html.match(/class="company_introduce"[\s\S]{0,300}?<strong class="tit">([^<]+)<\/strong>/)
+      if (introM) result.vision = stripTags(introM[1]).slice(0, 500)
+    }
+  } catch { /* skip */ }
 
-  const vision: string = company.description ?? company.intro ?? company.oneLineDesc ?? ''
-  const history: string = company.foundedYear ? `${company.foundedYear}년 설립` : ''
-  const employee_count: number = Number(company.employeeCount ?? company.employees ?? 0)
+  // total_investment: 사람인에 해당 정보 없음
+  result.total_investment = ''
 
-  let total_investment = ''
-  const rawInv = company.totalInvestment ?? company.investmentAmount ?? 0
-  if (rawInv) {
-    total_investment = rawInv > 100_000_000 ? `${Math.round(rawInv / 100_000_000)}억원` : `${rawInv.toLocaleString()}원`
-  }
-
-  const revenue: string = company.revenue
-    ? company.revenue > 100_000_000
-      ? `${Math.round(company.revenue / 100_000_000)}억원`
-      : `${company.revenue.toLocaleString()}원`
-    : ''
-
-  return { vision, history, employee_count, total_investment, revenue }
+  return result
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -211,42 +148,25 @@ export async function GET(request: Request) {
   }
 
   let insights: StartupInsights = { ...EMPTY_INSIGHTS }
-  let source = ''
 
-  // 1차: TheVC
   try {
-    const thevc = await scrapeTheVC(companyName)
-    insights = { ...insights, ...thevc }
-    source = 'thevc'
-    console.log('[startup-info] TheVC 성공:', companyName)
-  } catch (e) {
-    console.error('[startup-info] TheVC 실패:', String(e))
-  }
+    const csn = await fetchSaraminCSN(companyName)
+    if (!csn) throw new Error('사람인: CSN 없음 (공고 없거나 검색 실패)')
 
-  // 2차: 혁신의숲 (빈 필드 보완)
-  const needsMore = !insights.vision || !insights.total_investment || !insights.revenue
-  if (needsMore) {
-    try {
-      const inno = await scrapeInnoforest(companyName)
-      if (!insights.vision && inno.vision) insights.vision = inno.vision
-      if (!insights.history && inno.history) insights.history = inno.history
-      if (!insights.employee_count && inno.employee_count) insights.employee_count = inno.employee_count
-      if (!insights.total_investment && inno.total_investment) insights.total_investment = inno.total_investment
-      if (!insights.revenue && inno.revenue) insights.revenue = inno.revenue
-      source = source ? `${source}+innoforest` : 'innoforest'
-      console.log('[startup-info] 혁신의숲 성공:', companyName)
-    } catch (e) {
-      console.error('[startup-info] 혁신의숲 실패:', String(e))
-    }
+    const saramin = await scrapeSaraminCompany(csn)
+    insights = { ...insights, ...saramin }
+    console.log('[startup-info] 사람인 성공:', companyName, saramin)
+  } catch (e) {
+    console.error('[startup-info] 사람인 실패:', String(e))
   }
 
   const hasAnyData =
     !!insights.vision || !!insights.history || !!insights.revenue ||
-    !!insights.total_investment || insights.employee_count > 0
+    insights.employee_count > 0
 
   return NextResponse.json<StartupInfoResponse>({
     success: hasAnyData,
     data: { company_name: companyName, insights },
-    _source: source || 'none',
+    _source: hasAnyData ? 'saramin' : 'none',
   })
 }
