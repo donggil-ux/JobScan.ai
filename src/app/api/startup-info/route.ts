@@ -150,6 +150,60 @@ async function scrapeSaraminCompany(csn: string): Promise<Partial<StartupInsight
   return result
 }
 
+// ─── 원티드 스크래퍼 ──────────────────────────────────────────────────────────
+// 원티드 jobs API(JSON)로 company_id 획득 → /api/v4/companies/{id} 상세 조회
+const WANTED_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://www.wanted.co.kr/',
+  Origin: 'https://www.wanted.co.kr',
+  'x-wanted-language': 'ko',
+}
+
+async function scrapeWanted(companyName: string): Promise<Partial<StartupInsights>> {
+  // Step 1: 회사명으로 채용공고 검색 → company_id 추출
+  const searchRes = await fetch(
+    `https://www.wanted.co.kr/api/v4/jobs?query=${encodeURIComponent(companyName)}&country=kr&limit=5&job_sort=job.latest_order`,
+    { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
+  )
+  if (!searchRes.ok) throw new Error(`Wanted jobs API ${searchRes.status}`)
+
+  const searchJson = await searchRes.json()
+  const jobs: any[] = searchJson?.data ?? []
+  if (!jobs.length) throw new Error('Wanted: 검색 결과 없음')
+
+  const companyId: number = jobs[0]?.company?.id
+  if (!companyId) throw new Error('Wanted: company_id 없음')
+
+  // Step 2: 기업 상세 정보 조회
+  const companyRes = await fetch(
+    `https://www.wanted.co.kr/api/v4/companies/${companyId}`,
+    { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
+  )
+  if (!companyRes.ok) throw new Error(`Wanted company API ${companyRes.status}`)
+
+  const companyRaw = await companyRes.json()
+  const company: any = companyRaw?.company ?? companyRaw?.data ?? {}
+
+  const result: Partial<StartupInsights> = {}
+
+  // 기업 소개/비전 — detail.description에 위치
+  const desc: string = company.detail?.description ?? company.description ?? ''
+  if (desc) result.vision = stripTags(desc).replace(/\n+/g, ' ').slice(0, 500)
+
+  // 설립연도
+  const foundedYear: number = company.founded_year ?? 0
+  if (foundedYear) result.history = `${foundedYear}년 설립`
+
+  // 임직원 수 (Wanted는 대부분 미제공)
+  const emp = company.employee_count ?? company.employees_number ?? 0
+  if (emp) result.employee_count = Number(emp)
+
+  return result
+}
+
 // ─── Route Handler ────────────────────────────────────────────────────────────
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -163,25 +217,42 @@ export async function GET(request: Request) {
   }
 
   let insights: StartupInsights = { ...EMPTY_INSIGHTS }
+  const sources: string[] = []
 
+  // 1차: 사람인 (업력·기업형태·임직원·매출·설립일·비전)
   try {
     const csn = await fetchSaraminCSN(companyName)
-    if (!csn) throw new Error('사람인: CSN 없음 (공고 없거나 검색 실패)')
-
+    if (!csn) throw new Error('사람인: CSN 없음')
     const saramin = await scrapeSaraminCompany(csn)
     insights = { ...insights, ...saramin }
-    console.log('[startup-info] 사람인 성공:', companyName, saramin)
+    sources.push('saramin')
+    console.log('[startup-info] 사람인 성공:', companyName)
   } catch (e) {
     console.error('[startup-info] 사람인 실패:', String(e))
   }
 
+  // 2차: 원티드 — 사람인에 없거나 비전이 빈 경우 보완
+  const needsWanted = !insights.vision || !insights.employee_count
+  if (needsWanted) {
+    try {
+      const wanted = await scrapeWanted(companyName)
+      if (!insights.vision && wanted.vision) insights.vision = wanted.vision
+      if (!insights.employee_count && wanted.employee_count) insights.employee_count = wanted.employee_count
+      if (!insights.history && wanted.history) insights.history = wanted.history
+      sources.push('wanted')
+      console.log('[startup-info] 원티드 성공:', companyName)
+    } catch (e) {
+      console.error('[startup-info] 원티드 실패:', String(e))
+    }
+  }
+
   const hasAnyData =
     !!insights.vision || !!insights.history || !!insights.revenue ||
-    insights.employee_count > 0
+    !!insights.company_age || insights.employee_count > 0
 
   return NextResponse.json<StartupInfoResponse>({
     success: hasAnyData,
     data: { company_name: companyName, insights },
-    _source: hasAnyData ? 'saramin' : 'none',
+    _source: sources.join('+') || 'none',
   })
 }
