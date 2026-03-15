@@ -234,7 +234,7 @@ function CompanyDetailInner({ name }: { name: string }) {
           {/* 데이터 출처 안내 */}
           {!loading && (
             <p className="text-xs text-gray-400 text-center mt-3">
-              출처: TheVC · 혁신의숲 (정보가 다를 수 있습니다)
+              출처: 사람인 기업정보 (정보가 다를 수 있습니다)
             </p>
           )}
         </div>
