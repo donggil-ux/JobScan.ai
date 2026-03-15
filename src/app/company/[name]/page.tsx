@@ -10,6 +10,8 @@ interface StartupInsights {
   employee_count: number
   revenue: string
   total_investment: string
+  company_age: string
+  company_type: string
 }
 
 interface StartupInfoData {
@@ -190,32 +192,44 @@ function CompanyDetailInner({ name }: { name: string }) {
             <p className="text-sm text-gray-300 mb-4">정보를 가져오지 못했어요.</p>
           )}
 
-          <div className="border-t border-gray-50 pt-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              설립 &amp; 연혁
-            </h3>
-            {loading ? (
-              <div className="space-y-2">
-                <SkeletonBlock w="w-2/3" />
-                <SkeletonBlock w="w-1/2" />
-              </div>
-            ) : hasData && insights?.history ? (
-              <p className="text-sm text-gray-600 leading-relaxed">{insights.history}</p>
-            ) : (
-              <p className="text-sm text-gray-300">정보 없음</p>
-            )}
-          </div>
+          {(loading || (hasData && insights?.company_type)) && (
+            <div className="border-t border-gray-50 pt-3 flex items-center gap-2">
+              {loading ? <SkeletonBlock w="w-24" /> : (
+                <>
+                  <span className="text-xs text-gray-400">기업형태</span>
+                  <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                    {insights?.company_type}
+                  </span>
+                  {insights?.company_age && (
+                    <span className="text-xs text-gray-400">· 업력 {insights.company_age}</span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* ── 섹션 2: 재무 & 고용 그리드 ── */}
+        {/* ── 섹션 2: 기업 현황 그리드 ── */}
         <div className="mx-5 mb-4">
-          <h2 className="text-sm font-bold text-gray-900 mb-3 px-1">재무 &amp; 고용 현황</h2>
+          <h2 className="text-sm font-bold text-gray-900 mb-3 px-1">기업 현황</h2>
           <div className="grid grid-cols-3 gap-3">
             <StatCard
-              label="총 투자"
-              value={insights?.total_investment ?? ''}
+              label="업력"
+              value={insights?.company_age ?? ''}
               loading={loading}
-              icon="💰"
+              icon="🏛️"
+            />
+            <StatCard
+              label="기업형태"
+              value={insights?.company_type ?? ''}
+              loading={loading}
+              icon="🏷️"
+            />
+            <StatCard
+              label="임직원"
+              value={insights?.employee_count ?? 0}
+              loading={loading}
+              icon="👥"
             />
             <StatCard
               label="매출"
@@ -224,10 +238,16 @@ function CompanyDetailInner({ name }: { name: string }) {
               icon="📈"
             />
             <StatCard
-              label="임직원"
-              value={insights?.employee_count ?? 0}
+              label="설립일"
+              value={insights?.history ?? ''}
               loading={loading}
-              icon="👥"
+              icon="📅"
+            />
+            <StatCard
+              label="총 투자"
+              value={insights?.total_investment ?? ''}
+              loading={loading}
+              icon="💰"
             />
           </div>
 

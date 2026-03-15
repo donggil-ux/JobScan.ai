@@ -7,6 +7,8 @@ export interface StartupInsights {
   employee_count: number
   revenue: string
   total_investment: string
+  company_age: string    // 업력 N년차
+  company_type: string   // 기업형태 (스타트업, 중소기업 등)
 }
 
 interface StartupInfoResponse {
@@ -24,6 +26,8 @@ const EMPTY_INSIGHTS: StartupInsights = {
   employee_count: 0,
   revenue: '',
   total_investment: '',
+  company_age: '',
+  company_type: '',
 }
 
 // ─── HTML 유틸 ────────────────────────────────────────────────────────────────
@@ -127,6 +131,17 @@ async function scrapeSaraminCompany(csn: string): Promise<Partial<StartupInsight
       const introM = html.match(/class="company_introduce"[\s\S]{0,300}?<strong class="tit">([^<]+)<\/strong>/)
       if (introM) result.vision = stripTags(introM[1]).slice(0, 500)
     }
+  } catch { /* skip */ }
+
+  // 업력 / 기업형태 — 메타 description에서 추출
+  // 예: "업력 : 14년차, 기업형태 : 스타트업, 업종 : ..."
+  try {
+    const metaDesc = html.match(/<meta name="Description" content="([^"]{10,500})"/i)?.[1] ?? ''
+    const ageM = metaDesc.match(/업력\s*:\s*(\d+년차)/)
+    if (ageM) result.company_age = ageM[1]
+
+    const typeM = metaDesc.match(/기업형태\s*:\s*([^,<"]+)/)
+    if (typeM) result.company_type = typeM[1].trim()
   } catch { /* skip */ }
 
   // total_investment: 사람인에 해당 정보 없음
