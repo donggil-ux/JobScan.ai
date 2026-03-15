@@ -28,10 +28,12 @@ export type FilterExperience = 'all' | '5-7' | '8plus'
 export type FilterEmployment = 'all' | '정규직' | '계약직' | '프리랜서'
 export type FilterCompanySize = 'all' | '대기업' | '중견기업' | '중소/스타트업'
 export type FilterPlatform = 'all' | Platform
+export type FilterSort = 'all' | 'deadline'
 
 export interface Filters {
   experience: FilterExperience
   employment: FilterEmployment
   companySize: FilterCompanySize
   platform: FilterPlatform
+  sort: FilterSort
 }

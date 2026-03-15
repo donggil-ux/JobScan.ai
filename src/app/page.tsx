@@ -12,6 +12,7 @@ const INITIAL_FILTERS: Filters = {
   employment: 'all',
   companySize: 'all',
   platform: 'all',
+  sort: 'all',
 }
 
 export default function HomePage() {
@@ -67,6 +68,16 @@ export default function HomePage() {
       if (filters.platform !== 'all' && job.source_platform !== filters.platform) return false
 
       return true
+    }).sort((a, b) => {
+      if (filters.sort === 'deadline') {
+        // 마감 임박순: null(상시채용)은 맨 뒤
+        if (!a.deadline && !b.deadline) return 0
+        if (!a.deadline) return 1
+        if (!b.deadline) return -1
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+      }
+      // 기본: AI 매칭순 (높은 순)
+      return b.match_score - a.match_score
     })
   }, [filters, searchQuery, jobs])
 

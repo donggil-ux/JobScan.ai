@@ -41,6 +41,11 @@ const PLATFORM_OPTIONS = [
   { label: '사람인', value: 'saramin' },
 ]
 
+const SORT_OPTIONS = [
+  { label: 'AI 매칭순', value: 'all' },
+  { label: '마감 임박순', value: 'deadline' },
+]
+
 export default function FilterBar({ filters, onChange, searchQuery, onSearchChange, total, loading, dataSource }: FilterBarProps) {
   return (
     <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
@@ -101,6 +106,12 @@ export default function FilterBar({ filters, onChange, searchQuery, onSearchChan
           value={filters.platform}
           options={PLATFORM_OPTIONS}
           onChange={(v) => onChange('platform', v)}
+        />
+        <FilterChip
+          label="정렬"
+          value={filters.sort}
+          options={SORT_OPTIONS}
+          onChange={(v) => onChange('sort', v)}
         />
       </div>
       <div className="px-5 pb-2 -mt-1 flex items-center gap-2">
