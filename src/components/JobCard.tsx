@@ -137,7 +137,7 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         onClick={handleCardClick}
         className="bg-white border border-gray-100 rounded-xl shadow-sm p-5 cursor-pointer active:bg-gray-50 select-none"
       >
-        {/* Top: 플랫폼 뱃지 + AI 매칭 스코어 */}
+        {/* Top: 플랫폼 뱃지 + AI 매칭 스코어 + 숨기기 버튼 */}
         <div className="flex items-center justify-between mb-3">
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
@@ -146,9 +146,20 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
           >
             {PLATFORM_LABEL[job.source_platform]}
           </span>
-          <span className={`text-sm ${matchColor}`}>
-            {matchEmoji} Fit {job.match_score}%
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm ${matchColor}`}>
+              {matchEmoji} Fit {job.match_score}%
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onHide(job.job_id) }}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors flex-shrink-0"
+              aria-label="관심 없음"
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Middle: 회사 정보 */}

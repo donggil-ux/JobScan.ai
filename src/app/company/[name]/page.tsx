@@ -301,13 +301,30 @@ function CompanyDetailInner({ name }: { name: string }) {
 
       {/* ── Fixed CTA ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4">
-        <div className="mx-auto" style={{ maxWidth: '800px' }}>
+        <div className="mx-auto flex gap-3" style={{ maxWidth: '800px' }}>
+          {jobId && (
+            <button
+              onClick={() => {
+                try {
+                  const raw = localStorage.getItem('hiddenJobs')
+                  const hidden: string[] = raw ? JSON.parse(raw) : []
+                  if (!hidden.includes(jobId)) {
+                    localStorage.setItem('hiddenJobs', JSON.stringify([...hidden, jobId]))
+                  }
+                } catch {}
+                router.back()
+              }}
+              className="flex-shrink-0 font-semibold py-3.5 px-4 rounded-xl text-sm bg-gray-100 text-gray-500 active:bg-gray-200 transition-colors"
+            >
+              다시 안보기
+            </button>
+          )}
           <button
             onClick={() => {
               if (originalUrl) window.open(originalUrl, '_blank', 'noopener,noreferrer')
             }}
             disabled={!originalUrl}
-            className={`w-full font-semibold py-3.5 rounded-xl text-base transition-opacity ${
+            className={`flex-1 font-semibold py-3.5 rounded-xl text-base transition-opacity ${
               originalUrl
                 ? 'bg-blue-600 text-white active:opacity-80'
                 : 'bg-gray-200 text-gray-400 opacity-50 cursor-not-allowed'

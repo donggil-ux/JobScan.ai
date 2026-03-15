@@ -37,7 +37,14 @@ function SkeletonCard() {
 
 export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
   const [scrapped, setScrapped] = useState<Set<string>>(new Set())
-  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const [hidden, setHidden] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('hiddenJobs')
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+    } catch {
+      return new Set<string>()
+    }
+  })
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -51,7 +58,13 @@ export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
 
   const handleHide = (id: string) => {
     const job = jobs.find((j) => j.job_id === id)
-    setHidden((prev) => new Set(prev).add(id))
+    setHidden((prev) => {
+      const next = new Set(prev).add(id)
+      try {
+        localStorage.setItem('hiddenJobs', JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
 
     if (toastTimer.current) clearTimeout(toastTimer.current)
     setToast({ jobId: id, message: job?.company.name ?? '해당 공고' })
@@ -63,6 +76,9 @@ export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
     setHidden((prev) => {
       const next = new Set(prev)
       next.delete(toast.jobId)
+      try {
+        localStorage.setItem('hiddenJobs', JSON.stringify([...next]))
+      } catch {}
       return next
     })
     setToast(null)
