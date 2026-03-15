@@ -40,7 +40,7 @@ export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('hiddenJobs')
-      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set<string>()
     } catch {
       return new Set<string>()
     }
@@ -61,7 +61,7 @@ export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
     setHidden((prev) => {
       const next = new Set(prev).add(id)
       try {
-        localStorage.setItem('hiddenJobs', JSON.stringify([...next]))
+        localStorage.setItem('hiddenJobs', JSON.stringify(Array.from(next)))
       } catch {}
       return next
     })
@@ -77,7 +77,7 @@ export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
       const next = new Set(prev)
       next.delete(toast.jobId)
       try {
-        localStorage.setItem('hiddenJobs', JSON.stringify([...next]))
+        localStorage.setItem('hiddenJobs', JSON.stringify(Array.from(next)))
       } catch {}
       return next
     })
