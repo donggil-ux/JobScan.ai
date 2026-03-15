@@ -39,6 +39,23 @@ function stripTags(s: string): string {
     .replace(/\s+/g, ' ').trim()
 }
 
+// ─── 회사명 전처리 ─────────────────────────────────────────────────────────────
+// "㈜인바이트넷" → "인바이트넷", "(주)ABC" → "ABC", "아토머스(마인드카페)" → "아토머스"
+function cleanCompanyName(name: string): string {
+  return name
+    .replace(/^[㈜㈔㈕]\s*/, '')
+    .replace(/^\(주\)\s*/i, '')
+    .replace(/^\(유\)\s*/i, '')
+    .replace(/\s*\([^)]+\)\s*$/, '')
+    .trim()
+}
+
+// 괄호 안 대체명 추출: "아토머스(마인드카페)" → "마인드카페"
+function extractParenName(name: string): string | null {
+  const m = name.match(/\(([^)]+)\)\s*$/)
+  return m ? m[1].trim() : null
+}
+
 // ─── 사람인 요청 헤더 ─────────────────────────────────────────────────────────
 const SARAMIN_HEADERS: Record<string, string> = {
   'User-Agent':
@@ -71,6 +88,29 @@ async function fetchSaraminCSN(companyName: string): Promise<string | null> {
   if (!csnMatch) return null
 
   return decodeURIComponent(csnMatch[1])
+}
+
+// 전처리 포함한 CSN 조회: 원본 → clean → 괄호 내 이름 순으로 시도
+async function fetchSaraminCSNWithFallback(companyName: string): Promise<string | null> {
+  // 1차: 원본 이름
+  const csn1 = await fetchSaraminCSN(companyName)
+  if (csn1) return csn1
+
+  // 2차: 법인 기호 제거 + 괄호 제거
+  const cleaned = cleanCompanyName(companyName)
+  if (cleaned !== companyName) {
+    const csn2 = await fetchSaraminCSN(cleaned)
+    if (csn2) return csn2
+  }
+
+  // 3차: 괄호 안 대체명 (예: "마인드카페")
+  const parenName = extractParenName(companyName)
+  if (parenName) {
+    const csn3 = await fetchSaraminCSN(parenName)
+    if (csn3) return csn3
+  }
+
+  return null
 }
 
 // ─── Step 2: CSN으로 사람인 기업정보 페이지 파싱 ─────────────────────────────
@@ -141,7 +181,11 @@ async function scrapeSaraminCompany(csn: string): Promise<Partial<StartupInsight
     if (ageM) result.company_age = ageM[1]
 
     const typeM = metaDesc.match(/기업형태\s*:\s*([^,<"]+)/)
-    if (typeM) result.company_type = typeM[1].trim()
+    if (typeM) {
+      const val = typeM[1].trim()
+      // "-"는 미확인 값이므로 저장하지 않음
+      if (val && val !== '-') result.company_type = val
+    }
   } catch { /* skip */ }
 
   // total_investment: 사람인에 해당 정보 없음
@@ -151,7 +195,6 @@ async function scrapeSaraminCompany(csn: string): Promise<Partial<StartupInsight
 }
 
 // ─── 원티드 스크래퍼 ──────────────────────────────────────────────────────────
-// 원티드 jobs API(JSON)로 company_id 획득 → /api/v4/companies/{id} 상세 조회
 const WANTED_HEADERS: Record<string, string> = {
   'User-Agent':
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -162,22 +205,7 @@ const WANTED_HEADERS: Record<string, string> = {
   'x-wanted-language': 'ko',
 }
 
-async function scrapeWanted(companyName: string): Promise<Partial<StartupInsights>> {
-  // Step 1: 회사명으로 채용공고 검색 → company_id 추출
-  const searchRes = await fetch(
-    `https://www.wanted.co.kr/api/v4/jobs?query=${encodeURIComponent(companyName)}&country=kr&limit=5&job_sort=job.latest_order`,
-    { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
-  )
-  if (!searchRes.ok) throw new Error(`Wanted jobs API ${searchRes.status}`)
-
-  const searchJson = await searchRes.json()
-  const jobs: any[] = searchJson?.data ?? []
-  if (!jobs.length) throw new Error('Wanted: 검색 결과 없음')
-
-  const companyId: number = jobs[0]?.company?.id
-  if (!companyId) throw new Error('Wanted: company_id 없음')
-
-  // Step 2: 기업 상세 정보 조회
+async function fetchWantedCompany(companyId: number): Promise<Partial<StartupInsights>> {
   const companyRes = await fetch(
     `https://www.wanted.co.kr/api/v4/companies/${companyId}`,
     { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
@@ -204,10 +232,63 @@ async function scrapeWanted(companyName: string): Promise<Partial<StartupInsight
   return result
 }
 
+// 원티드 job URL → job ID → company_id → 기업 정보 (가장 정확한 방법)
+async function scrapeWantedByJobUrl(jobUrl: string): Promise<Partial<StartupInsights>> {
+  const jobIdMatch = jobUrl.match(/\/wd\/(\d+)/)
+  if (!jobIdMatch) throw new Error('Wanted: job URL에서 ID 추출 실패')
+  const jobId = jobIdMatch[1]
+
+  const jobRes = await fetch(
+    `https://www.wanted.co.kr/api/v4/jobs/${jobId}`,
+    { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
+  )
+  if (!jobRes.ok) throw new Error(`Wanted job API ${jobRes.status}`)
+
+  const jobRaw = await jobRes.json()
+  const companyId: number =
+    jobRaw?.job?.company?.id ?? jobRaw?.data?.company?.id ?? 0
+  if (!companyId) throw new Error('Wanted: job에서 company_id 없음')
+
+  return fetchWantedCompany(companyId)
+}
+
+// 원티드 회사명 검색 → company_id → 기업 정보 (폴백용)
+async function scrapeWantedByName(companyName: string): Promise<Partial<StartupInsights>> {
+  // 여러 이름 시도
+  const namesToTry = [companyName]
+  const cleaned = cleanCompanyName(companyName)
+  if (cleaned !== companyName) namesToTry.push(cleaned)
+  const parenName = extractParenName(companyName)
+  if (parenName) namesToTry.push(parenName)
+
+  for (const name of namesToTry) {
+    try {
+      const searchRes = await fetch(
+        `https://www.wanted.co.kr/api/v4/jobs?query=${encodeURIComponent(name)}&country=kr&limit=5&job_sort=job.latest_order`,
+        { headers: WANTED_HEADERS, signal: AbortSignal.timeout(4000) }
+      )
+      if (!searchRes.ok) continue
+
+      const searchJson = await searchRes.json()
+      const jobs: any[] = searchJson?.data ?? []
+      if (!jobs.length) continue
+
+      const companyId: number = jobs[0]?.company?.id
+      if (!companyId) continue
+
+      return await fetchWantedCompany(companyId)
+    } catch { /* 다음 이름 시도 */ }
+  }
+
+  throw new Error('Wanted: 모든 이름 검색 실패')
+}
+
 // ─── Route Handler ────────────────────────────────────────────────────────────
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const companyName = (searchParams.get('companyName') ?? '').trim()
+  const platform = (searchParams.get('platform') ?? '').trim()
+  const jobUrl = (searchParams.get('jobUrl') ?? '').trim()
 
   if (!companyName) {
     return NextResponse.json<StartupInfoResponse>({
@@ -219,9 +300,9 @@ export async function GET(request: Request) {
   let insights: StartupInsights = { ...EMPTY_INSIGHTS }
   const sources: string[] = []
 
-  // 1차: 사람인 (업력·기업형태·임직원·매출·설립일·비전)
+  // 1차: 사람인 (업력·기업형태·임직원·매출·설립일·비전) — 전처리 포함
   try {
-    const csn = await fetchSaraminCSN(companyName)
+    const csn = await fetchSaraminCSNWithFallback(companyName)
     if (!csn) throw new Error('사람인: CSN 없음')
     const saramin = await scrapeSaraminCompany(csn)
     insights = { ...insights, ...saramin }
@@ -231,11 +312,15 @@ export async function GET(request: Request) {
     console.error('[startup-info] 사람인 실패:', String(e))
   }
 
-  // 2차: 원티드 — 사람인에 없거나 비전이 빈 경우 보완
+  // 2차: 원티드 — 비전 또는 임직원 수가 없는 경우 보완
   const needsWanted = !insights.vision || !insights.employee_count
   if (needsWanted) {
     try {
-      const wanted = await scrapeWanted(companyName)
+      // 원티드 공고 URL이 있으면 직접 조회 (더 정확), 없으면 이름 검색
+      const wanted = platform === 'wanted' && jobUrl
+        ? await scrapeWantedByJobUrl(jobUrl)
+        : await scrapeWantedByName(companyName)
+
       if (!insights.vision && wanted.vision) insights.vision = wanted.vision
       if (!insights.employee_count && wanted.employee_count) insights.employee_count = wanted.employee_count
       if (!insights.history && wanted.history) insights.history = wanted.history

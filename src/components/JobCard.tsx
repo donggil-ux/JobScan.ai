@@ -77,13 +77,22 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
 
   const handleCardClick = () => {
     if (Math.abs(offsetX) < 10) {
+      // 스크롤 위치 저장
+      sessionStorage.setItem('feedScrollY', String(window.scrollY))
+      // AI 분석 데이터 저장
+      if (job.ai_analysis) {
+        sessionStorage.setItem(`ai_${job.job_id}`, JSON.stringify(job.ai_analysis))
+      }
       router.push(
         `/company/${encodeURIComponent(job.company.name)}` +
         `?position=${encodeURIComponent(job.position.title)}` +
         `&url=${encodeURIComponent(job.position.url)}` +
         `&logo=${encodeURIComponent(job.company.logo_url)}` +
         `&size=${encodeURIComponent(job.company.company_size)}` +
-        `&score=${job.match_score}`
+        `&score=${job.match_score}` +
+        `&platform=${job.source_platform}` +
+        `&jobUrl=${encodeURIComponent(job.position.url)}` +
+        `&jobId=${job.job_id}`
       )
     }
   }
@@ -128,7 +137,7 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         onClick={handleCardClick}
         className="bg-white border border-gray-100 rounded-xl shadow-sm p-5 cursor-pointer active:bg-gray-50 select-none"
       >
-        {/* Top: 플랫폼 뱃지 + AI 매칭 스코어 */}
+        {/* Top: 플랫폼 뱃지 + AI 매칭 스코어 + 숨기기 버튼 */}
         <div className="flex items-center justify-between mb-3">
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
@@ -137,9 +146,20 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
           >
             {PLATFORM_LABEL[job.source_platform]}
           </span>
-          <span className={`text-sm ${matchColor}`}>
-            {matchEmoji} Fit {job.match_score}%
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm ${matchColor}`}>
+              {matchEmoji} Fit {job.match_score}%
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onHide(job.job_id) }}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors flex-shrink-0"
+              aria-label="관심 없음"
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Middle: 회사 정보 */}
@@ -148,6 +168,15 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
           <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
             {job.company.company_size}
           </span>
+          {job.position.role_type && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 font-medium ${
+              job.position.role_type === 'Lead'
+                ? 'bg-purple-50 text-purple-600'
+                : 'bg-teal-50 text-teal-600'
+            }`}>
+              {job.position.role_type}
+            </span>
+          )}
         </div>
 
         {/* 포지션 타이틀 */}
@@ -158,11 +187,9 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         {/* Bottom: 메타 정보 */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            {/* 고용형태 */}
             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md font-medium flex-shrink-0">
               {job.employment_type}
             </span>
-            {/* 키워드 태그 (최대 2개) */}
             {job.tags.slice(0, 2).map((tag) => (
               <span
                 key={tag}
@@ -172,7 +199,6 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
               </span>
             ))}
           </div>
-          {/* 마감일 */}
           <span className={`text-xs px-2 py-0.5 rounded-md flex-shrink-0 ${deadline.className}`}>
             {deadline.label}
           </span>

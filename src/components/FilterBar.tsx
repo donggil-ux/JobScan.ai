@@ -19,6 +19,12 @@ const EXPERIENCE_OPTIONS = [
   { label: '8년차 이상', value: '8plus' },
 ]
 
+const ROLE_OPTIONS = [
+  { label: '역할 전체', value: 'all' },
+  { label: 'IC (개인기여자)', value: 'IC' },
+  { label: 'Lead (리드)', value: 'Lead' },
+]
+
 const EMPLOYMENT_OPTIONS = [
   { label: '고용형태 전체', value: 'all' },
   { label: '정규직', value: '정규직' },
@@ -40,6 +46,11 @@ const PLATFORM_OPTIONS = [
   { label: '서핏', value: 'surfit' },
   { label: '잡코리아', value: 'jobkorea' },
   { label: '사람인', value: 'saramin' },
+]
+
+const SORT_OPTIONS = [
+  { label: 'AI 매칭순', value: 'all' },
+  { label: '마감 임박순', value: 'deadline' },
 ]
 
 export default function FilterBar({ filters, onChange, searchQuery, onSearchChange, total, loading, dataSource }: FilterBarProps) {
@@ -86,6 +97,12 @@ export default function FilterBar({ filters, onChange, searchQuery, onSearchChan
           onChange={(v) => onChange('experience', v)}
         />
         <FilterChip
+          label="역할"
+          value={filters.role}
+          options={ROLE_OPTIONS}
+          onChange={(v) => onChange('role', v)}
+        />
+        <FilterChip
           label="고용형태"
           value={filters.employment}
           options={EMPLOYMENT_OPTIONS}
@@ -102,6 +119,12 @@ export default function FilterBar({ filters, onChange, searchQuery, onSearchChan
           value={filters.platform}
           options={PLATFORM_OPTIONS}
           onChange={(v) => onChange('platform', v)}
+        />
+        <FilterChip
+          label="정렬"
+          value={filters.sort}
+          options={SORT_OPTIONS}
+          onChange={(v) => onChange('sort', v)}
         />
       </div>
       <div className="px-5 pb-2 -mt-1 flex items-center gap-2">
