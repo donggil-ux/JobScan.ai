@@ -19,6 +19,12 @@ const EXPERIENCE_OPTIONS = [
   { label: '8년차 이상', value: '8plus' },
 ]
 
+const ROLE_OPTIONS = [
+  { label: '역할 전체', value: 'all' },
+  { label: 'IC (개인기여자)', value: 'IC' },
+  { label: 'Lead (리드)', value: 'Lead' },
+]
+
 const EMPLOYMENT_OPTIONS = [
   { label: '고용형태 전체', value: 'all' },
   { label: '정규직', value: '정규직' },
@@ -37,6 +43,7 @@ const PLATFORM_OPTIONS = [
   { label: '플랫폼 전체', value: 'all' },
   { label: '원티드', value: 'wanted' },
   { label: '리멤버', value: 'remember' },
+  { label: '서핏', value: 'surfit' },
   { label: '잡코리아', value: 'jobkorea' },
   { label: '사람인', value: 'saramin' },
 ]
@@ -88,6 +95,12 @@ export default function FilterBar({ filters, onChange, searchQuery, onSearchChan
           value={filters.experience}
           options={EXPERIENCE_OPTIONS}
           onChange={(v) => onChange('experience', v)}
+        />
+        <FilterChip
+          label="역할"
+          value={filters.role}
+          options={ROLE_OPTIONS}
+          onChange={(v) => onChange('role', v)}
         />
         <FilterChip
           label="고용형태"

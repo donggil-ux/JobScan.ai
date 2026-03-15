@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { AiAnalysis } from '@/types/job'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 interface StartupInsights {
@@ -33,13 +34,6 @@ function getMatchEmoji(score: number): string {
   if (score >= 85) return '🔥'
   if (score >= 75) return '✨'
   return '💡'
-}
-
-// ─── 기업 규모 아이콘 ─────────────────────────────────────────────────────────
-const COMPANY_SIZE_ICON: Record<string, string> = {
-  대기업: '🏢',
-  중견기업: '🏬',
-  '중소/스타트업': '🚀',
 }
 
 // ─── 스켈레톤 ─────────────────────────────────────────────────────────────────
@@ -91,10 +85,12 @@ function CompanyDetailInner({ name }: { name: string }) {
   const score = Number(params.get('score') ?? 0)
   const platform = params.get('platform') ?? ''
   const jobUrl = params.get('jobUrl') ?? ''
+  const jobId = params.get('jobId') ?? ''
 
   const [info, setInfo] = useState<StartupInfoData | null>(null)
   const [loading, setLoading] = useState(true)
   const [logoFailed, setLogoFailed] = useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null)
 
   useEffect(() => {
     if (!name) return
@@ -110,6 +106,14 @@ function CompanyDetailInner({ name }: { name: string }) {
       })
       .catch(() => setLoading(false))
   }, [name, platform, jobUrl])
+
+  useEffect(() => {
+    if (!jobId) return
+    try {
+      const raw = sessionStorage.getItem(`ai_${jobId}`)
+      if (raw) setAiAnalysis(JSON.parse(raw))
+    } catch {}
+  }, [jobId])
 
   const insights = info?.data?.insights
   const hasData = info?.success && insights
@@ -162,7 +166,7 @@ function CompanyDetailInner({ name }: { name: string }) {
                 <span className="text-base font-bold text-gray-900">{name}</span>
                 {size && (
                   <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">
-                    {COMPANY_SIZE_ICON[size]} {size}
+                    {size}
                   </span>
                 )}
               </div>
@@ -264,6 +268,34 @@ function CompanyDetailInner({ name }: { name: string }) {
             </p>
           )}
         </div>
+
+        {/* ── 섹션 3: AI 포트폴리오 가이드 ── */}
+        {(loading || aiAnalysis) && (
+          <div className="bg-white mx-5 rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-base">🎯</span>
+              <h2 className="text-sm font-bold text-gray-900">AI 포트폴리오 가이드</h2>
+            </div>
+            {loading ? (
+              <div className="space-y-2">
+                <SkeletonBlock w="w-full" />
+                <SkeletonBlock w="w-4/5" />
+                <SkeletonBlock w="w-3/5" h="h-3" />
+              </div>
+            ) : aiAnalysis ? (
+              <div className="space-y-3">
+                <div className="bg-orange-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-orange-600 mb-1">⚠️ 보완 필요 포인트</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{aiAnalysis.portfolio_action_plan.identified_gap}</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-blue-600 mb-1">💡 개선 가이드</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{aiAnalysis.portfolio_action_plan.improvement_guide}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
 
       </div>
 

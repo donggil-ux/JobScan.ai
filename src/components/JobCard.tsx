@@ -77,6 +77,12 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
 
   const handleCardClick = () => {
     if (Math.abs(offsetX) < 10) {
+      // 스크롤 위치 저장
+      sessionStorage.setItem('feedScrollY', String(window.scrollY))
+      // AI 분석 데이터 저장
+      if (job.ai_analysis) {
+        sessionStorage.setItem(`ai_${job.job_id}`, JSON.stringify(job.ai_analysis))
+      }
       router.push(
         `/company/${encodeURIComponent(job.company.name)}` +
         `?position=${encodeURIComponent(job.position.title)}` +
@@ -85,7 +91,8 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
         `&size=${encodeURIComponent(job.company.company_size)}` +
         `&score=${job.match_score}` +
         `&platform=${job.source_platform}` +
-        `&jobUrl=${encodeURIComponent(job.position.url)}`
+        `&jobUrl=${encodeURIComponent(job.position.url)}` +
+        `&jobId=${job.job_id}`
       )
     }
   }
@@ -150,6 +157,15 @@ export default function JobCard({ job, onScrap, onHide }: JobCardProps) {
           <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md flex-shrink-0">
             {job.company.company_size}
           </span>
+          {job.position.role_type && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 font-medium ${
+              job.position.role_type === 'Lead'
+                ? 'bg-purple-50 text-purple-600'
+                : 'bg-teal-50 text-teal-600'
+            }`}>
+              {job.position.role_type}
+            </span>
+          )}
         </div>
 
         {/* 포지션 타이틀 */}
