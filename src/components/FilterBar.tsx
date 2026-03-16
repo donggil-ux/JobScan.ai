@@ -46,6 +46,7 @@ const PLATFORM_OPTIONS = [
   { label: '서핏', value: 'surfit' },
   { label: '잡코리아', value: 'jobkorea' },
   { label: '사람인', value: 'saramin' },
+  { label: '위시켓', value: 'wishket' },
 ]
 
 const SORT_OPTIONS = [

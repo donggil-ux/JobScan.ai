@@ -36,6 +36,15 @@ const REMEMBER_HEADERS: Record<string, string> = {
 // Discovered via network inspection: 376=브랜드, 377=제품디자인, 378·379·380·381=웹/UI, 393=UX
 const REMEMBER_DESIGN_CAT_IDS = [376, 377, 378, 379, 380, 381, 393]
 
+// ─── Wishket 요청 헤더 ───────────────────────────────────────────────────────
+const WISHKET_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://www.wishket.com/',
+}
+
 // ─── Jobkorea 요청 헤더 ──────────────────────────────────────────────────────
 const JOBKOREA_HEADERS: Record<string, string> = {
   'User-Agent':
@@ -539,12 +548,125 @@ async function fetchJobkoreaPage(query: string, page: number): Promise<string> {
   return res.text()
 }
 
+// ─── Wishket ─────────────────────────────────────────────────────────────────
+
+interface WishketCard {
+  id: string
+  title: string
+  role: string
+  skills: string[]
+  budget: string
+  term: string
+  employmentType: EmploymentType
+  status: string
+}
+
+// 위시켓 HTML → 프로젝트 배열 파싱
+function parseWishketHTML(html: string): WishketCard[] {
+  const results: WishketCard[] = []
+  const chunks = html.split('<div class="project-info-box">')
+  chunks.shift()
+
+  for (const chunk of chunks) {
+    // 모집 중인 프로젝트만
+    if (!chunk.includes('recruiting-mark')) continue
+
+    // ID
+    const idMatch = chunk.match(/\/project\/(\d+)\//)
+    if (!idMatch) continue
+    const id = idMatch[1]
+
+    // 제목
+    const titleMatch = chunk.match(/class="subtitle-1-half-medium"[^>]*>([\s\S]*?)<\/p>/)
+    if (!titleMatch) continue
+    const title = titleMatch[1].replace(/<[^>]+>/g, '').trim()
+
+    // 역할 (UX 디자이너, UI 디자이너 등)
+    const roleMatch = chunk.match(/class="project-category-or-role"[^>]*>([\s\S]*?)<\/p>/)
+    const role = roleMatch ? roleMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+
+    // 예산
+    const budgetMatch = chunk.match(/class="budget"[\s\S]{0,300}?class="body-1-medium"[^>]*>([\s\S]*?)<\/span>/)
+    const budget = budgetMatch ? budgetMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+
+    // 기간
+    const termMatch = chunk.match(/class="term"[\s\S]{0,300}?class="body-1-medium"[^>]*>([\s\S]*?)<\/span>/)
+    const term = termMatch ? termMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+
+    // 스킬
+    const skills: string[] = []
+    const skillRe = /class="skill-chip"[^>]*>([\s\S]*?)<\/span>/g
+    let sm: RegExpExecArray | null
+    while ((sm = skillRe.exec(chunk)) !== null) {
+      const skill = sm[1].replace(/<[^>]+>/g, '').trim()
+      if (skill) skills.push(skill)
+    }
+
+    // 고용형태: project-type-mark 텍스트 기반
+    const typeMatch = chunk.match(/class="project-type-mark"[^>]*>([\s\S]*?)<\/div>/)
+    const typeText = typeMatch ? typeMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+    const employmentType: EmploymentType = typeText.includes('기간제') ? '계약직' : '프리랜서'
+
+    results.push({ id, title, role, skills, budget, term, employmentType, status: 'recruiting' })
+  }
+
+  return results
+}
+
+// 위시켓 UX/UI 디자인 관련성 필터
+function isWishketDesignProject(card: WishketCard): boolean {
+  const text = `${card.title} ${card.role}`
+  // 디자인 직군 키워드 필수
+  if (!SARAMIN_MUST_HAVE.some((p) => p.test(text)) && !/디자이너|UX|UI|Figma/i.test(text)) return false
+  // 하드 블록
+  if (HARD_BLOCK_PATTERNS.some((p) => p.test(text))) return false
+  // 비관련 직군 블록
+  if (/영상|모션|3D|그래픽|패션|인테리어|편집|패키지|썸네일|배너/i.test(text)) return false
+  return true
+}
+
+// 위시켓 카드 → Job 타입 변환
+function toWishketJob(card: WishketCard): Job {
+  const numId = parseInt(card.id) % 100000
+  // 예산에서 숫자 추출해 태그로 사용
+  const tags = extractTags(`${card.title} ${card.role}`, '')
+  if (card.budget && !tags.includes('#프리랜서')) tags.push('#' + card.budget.replace(/\s/g, ''))
+  if (tags.length > 4) tags.splice(4)
+
+  return {
+    job_id: `wishket_${card.id}`,
+    source_platform: 'wishket',
+    company: {
+      name: '위시켓 클라이언트',
+      logo_url: '',
+      company_size: '중소/스타트업',
+    },
+    position: {
+      title: card.title,
+      url: `https://www.wishket.com/project/${card.id}/`,
+    },
+    employment_type: card.employmentType,
+    experience_req: { min_years: 3, max_years: null },
+    tags,
+    deadline: null,
+    match_score: getMatchScore(numId, 0),
+  }
+}
+
+// 위시켓 HTML fetch (디자인 카테고리)
+async function fetchWishketPage(page: number): Promise<string> {
+  const url = `https://www.wishket.com/project/?category=design&page=${page}`
+  const res = await fetch(url, { headers: WISHKET_HEADERS, next: { revalidate: 1800 } })
+  if (!res.ok) throw new Error(`Wishket ${res.status}`)
+  return res.text()
+}
+
 // ─── Route Handler ───────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
-    // 원티드 + 리멤버 + 사람인 + 잡코리아 병렬 fetch
-    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2] =
+    // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 병렬 fetch
+    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2, wkHtml1, wkHtml2] =
       await Promise.all([
         fetchWantedPage('프로덕트 디자이너', 0, 20),
         fetchWantedPage('프로덕트 디자이너', 20, 20),
@@ -554,6 +676,8 @@ export async function GET() {
         fetchSaraminPage('UX 디자이너', 1).catch(() => ''),
         fetchJobkoreaPage('프로덕트 디자이너', 1).catch(() => ''),
         fetchJobkoreaPage('UX 디자이너', 1).catch(() => ''),
+        fetchWishketPage(1).catch(() => ''),
+        fetchWishketPage(2).catch(() => ''),
       ])
 
     // ── Wanted 중복 제거 → 블록 패턴 필터 → 변환
@@ -603,8 +727,19 @@ export async function GET() {
       .filter(isJobkoreaDesignJob)
       .map(toJobkoreaJob)
 
+    // ── 위시켓 파싱 → 중복 제거 → 필터 → 변환
+    const seenWk = new Set<string>()
+    const wishketJobs: Job[] = [...parseWishketHTML(wkHtml1), ...parseWishketHTML(wkHtml2)]
+      .filter((card) => {
+        if (seenWk.has(card.id)) return false
+        seenWk.add(card.id)
+        return true
+      })
+      .filter(isWishketDesignProject)
+      .map(toWishketJob)
+
     // ── 전체 합산 + 헤드헌팅 회사 제외
-    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs]
+    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs, ...wishketJobs]
       .filter((job) => !COMPANY_BLOCK_PATTERNS.some((p) => p.test(job.company.name)))
 
     return NextResponse.json({
@@ -615,6 +750,7 @@ export async function GET() {
         remember: rememberJobs.length,
         saramin: saraminJobs.length,
         jobkorea: jkJobs.length,
+        wishket: wishketJobs.length,
       },
       fetched_at: new Date().toISOString(),
     })
