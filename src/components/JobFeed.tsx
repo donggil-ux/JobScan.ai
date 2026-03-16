@@ -37,18 +37,15 @@ function SkeletonCard() {
 
 export default function JobFeed({ jobs, loading = false }: JobFeedProps) {
   const [scrapped, setScrapped] = useState<Set<string>>(new Set())
-  const [hidden, setHidden] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('hiddenJobs')
-      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set<string>()
-    } catch {
-      return new Set<string>()
-    }
-  })
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('hiddenJobs')
+      if (raw) setHidden(new Set<string>(JSON.parse(raw) as string[]))
+    } catch {}
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
     }
