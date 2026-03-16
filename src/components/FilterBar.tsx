@@ -48,6 +48,7 @@ const PLATFORM_OPTIONS = [
   { label: '사람인', value: 'saramin' },
   { label: '위시켓', value: 'wishket' },
   { label: '프리모아', value: 'freemoa' },
+  { label: '카카오', value: 'kakao' },
 ]
 
 const SORT_OPTIONS = [
