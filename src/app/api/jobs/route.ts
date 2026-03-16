@@ -33,9 +33,10 @@ const REMEMBER_HEADERS: Record<string, string> = {
   Origin: 'https://career.rememberapp.co.kr',
 }
 
-// Remember job_category_ids for design roles (UX·UI·Product·Brand·Web)
-// Discovered via network inspection: 376=브랜드, 377=제품디자인, 378·379·380·381=웹/UI, 393=UX
-const REMEMBER_DESIGN_CAT_IDS = [376, 377, 378, 379, 380, 381, 393]
+// Remember job_category_ids for design roles (UX·UI·Product)
+// Confirmed IDs: 378=IT프로덕트/UX디자인, 379=UI/GUI디자인, 393=디자인/UX기타
+// Removed: 376(브랜드), 377(산업·제품), 380/381(미확인) — 관련성 낮거나 미검증
+const REMEMBER_DESIGN_CAT_IDS = [378, 379, 393]
 
 // ─── Wishket 요청 헤더 ───────────────────────────────────────────────────────
 const WISHKET_HEADERS: Record<string, string> = {
@@ -81,8 +82,9 @@ const MID_CORPS = [
   // 커머스·라이프
   '무신사', '29CM', '오늘의집', '마켓컬리', '컬리', '야놀자', '직방',
   '올리브영', 'CJ올리브',
-  // 핀테크·기타
+  // 핀테크·크라우드펀딩·기타
   '메리츠', '코인원', '인터파크', '위메프', '티몬', '11번가', 'SSG',
+  '와디즈',
 ]
 
 function getCompanySize(name: string): CompanySize {
@@ -832,15 +834,23 @@ async function fetchWishketPage(page: number): Promise<string> {
 export async function GET() {
   try {
     // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 + 프리모아 + 카카오 병렬 fetch
-    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2,
-           wkHtml1, wkHtml2, wkHtml3, wkHtml4, wkHtml5, fmPage1, fmPage2, kakaoItems] =
+    const [wPage1, wPage2, wWadiz,
+           remPage1, remPage2, remPage3, remPage4,
+           sarHtml1, sarHtml2, sarWadiz,
+           jkHtml1, jkHtml2,
+           wkHtml1, wkHtml2, wkHtml3, wkHtml4, wkHtml5,
+           fmPage1, fmPage2, kakaoItems] =
       await Promise.all([
         fetchWantedPage('프로덕트 디자이너', 0, 20),
         fetchWantedPage('프로덕트 디자이너', 20, 20),
+        fetchWantedPage('와디즈 디자이너', 0, 20).catch(() => [] as any[]),
         fetchRememberPage(1, 20).catch(() => [] as any[]),
         fetchRememberPage(2, 20).catch(() => [] as any[]),
+        fetchRememberPage(3, 20).catch(() => [] as any[]),
+        fetchRememberPage(4, 20).catch(() => [] as any[]),
         fetchSaraminPage('프로덕트 디자이너', 1).catch(() => ''),
         fetchSaraminPage('UX 디자이너', 1).catch(() => ''),
+        fetchSaraminPage('와디즈', 1).catch(() => ''),
         fetchJobkoreaPage('프로덕트 디자이너', 1).catch(() => ''),
         fetchJobkoreaPage('UX 디자이너', 1).catch(() => ''),
         fetchWishketPage(1).catch(() => ''),
@@ -855,7 +865,7 @@ export async function GET() {
 
     // ── Wanted 중복 제거 → 블록 패턴 필터 → 변환
     const seenWanted = new Set<number>()
-    const wantedJobs: Job[] = [...wPage1, ...wPage2]
+    const wantedJobs: Job[] = [...wPage1, ...wPage2, ...wWadiz]
       .filter((item) => {
         if (seenWanted.has(item.id)) return false
         seenWanted.add(item.id)
@@ -869,7 +879,7 @@ export async function GET() {
 
     // ── Remember 중복 제거 → 비관련 포지션 필터 → 변환
     const seenRemember = new Set<number>()
-    const rememberJobs: Job[] = [...remPage1, ...remPage2]
+    const rememberJobs: Job[] = [...remPage1, ...remPage2, ...remPage3, ...remPage4]
       .filter((item) => {
         if (seenRemember.has(item.id)) return false
         seenRemember.add(item.id)
@@ -880,7 +890,7 @@ export async function GET() {
 
     // ── 사람인 파싱 → 중복 제거 → 필터 → 변환
     const seenSaramin = new Set<string>()
-    const saraminJobs: Job[] = [...parseSaraminHTML(sarHtml1), ...parseSaraminHTML(sarHtml2)]
+    const saraminJobs: Job[] = [...parseSaraminHTML(sarHtml1), ...parseSaraminHTML(sarHtml2), ...parseSaraminHTML(sarWadiz)]
       .filter((item) => {
         if (seenSaramin.has(item.id)) return false
         seenSaramin.add(item.id)
