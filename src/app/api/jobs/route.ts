@@ -565,6 +565,56 @@ async function fetchJobkoreaPage(query: string, page: number): Promise<string> {
   return res.text()
 }
 
+// ─── Kakao Careers ───────────────────────────────────────────────────────────
+
+const KAKAO_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  Accept: 'application/json',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://careers.kakao.com/jobs?part=DESIGN',
+}
+
+interface KakaoJob {
+  jobOfferId: number
+  jobOfferTitle: string
+  employeeTypeName: string | null
+  endDate: string | null
+}
+
+async function fetchKakaoDesignJobs(): Promise<KakaoJob[]> {
+  const url = 'https://careers.kakao.com/public/api/job-list?part=DESIGN&page=1&size=100'
+  const res = await fetch(url, { headers: KAKAO_HEADERS, next: { revalidate: 1800 } })
+  if (!res.ok) throw new Error(`Kakao Careers ${res.status}`)
+  const json = await res.json()
+  return Array.isArray(json?.jobList) ? json.jobList : []
+}
+
+function toKakaoJob(item: KakaoJob): Job {
+  const numId = item.jobOfferId % 100000
+  const empName = item.employeeTypeName ?? ''
+  const employment_type: EmploymentType =
+    empName.includes('계약') ? '계약직' : '정규직'
+
+  return {
+    job_id: `kakao_${item.jobOfferId}`,
+    source_platform: 'kakao',
+    company: {
+      name: '카카오',
+      logo_url: 'https://t1.kakaocdn.net/kakaoent_hr/main/favicon.ico',
+      company_size: '대기업',
+    },
+    position: {
+      title: item.jobOfferTitle,
+      url: `https://careers.kakao.com/jobs/P-${item.jobOfferId}`,
+    },
+    employment_type,
+    experience_req: { min_years: 5, max_years: null },
+    tags: extractTags(item.jobOfferTitle, ''),
+    deadline: item.endDate ? item.endDate.slice(0, 10) : null,
+    match_score: getMatchScore(numId, 0),
+  }
+}
+
 // ─── Freemoa ─────────────────────────────────────────────────────────────────
 
 interface FreemoaProject {
@@ -781,9 +831,9 @@ async function fetchWishketPage(page: number): Promise<string> {
 
 export async function GET() {
   try {
-    // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 + 프리모아 병렬 fetch
+    // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 + 프리모아 + 카카오 병렬 fetch
     const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2,
-           wkHtml1, wkHtml2, wkHtml3, wkHtml4, wkHtml5, fmPage1, fmPage2] =
+           wkHtml1, wkHtml2, wkHtml3, wkHtml4, wkHtml5, fmPage1, fmPage2, kakaoItems] =
       await Promise.all([
         fetchWantedPage('프로덕트 디자이너', 0, 20),
         fetchWantedPage('프로덕트 디자이너', 20, 20),
@@ -800,6 +850,7 @@ export async function GET() {
         fetchWishketPage(5).catch(() => ''),
         fetchFreemoaPage(1).catch(() => [] as FreemoaProject[]),
         fetchFreemoaPage(2).catch(() => [] as FreemoaProject[]),
+        fetchKakaoDesignJobs().catch(() => [] as KakaoJob[]),
       ])
 
     // ── Wanted 중복 제거 → 블록 패턴 필터 → 변환
@@ -874,8 +925,14 @@ export async function GET() {
       .filter((p) => isSaraminDesignJob(p.title) || /디자인|UX|UI|Figma/i.test(p.title))
       .map(toFreemoaJob)
 
+    // ── 카카오 커리어스 필터 → 변환
+    const kakaoJobs: Job[] = kakaoItems
+      .filter((item) => isRelevantDesignJob(item.jobOfferTitle) || /디자이너|Designer/i.test(item.jobOfferTitle))
+      .filter((item) => !/인턴|어시스턴트|Intern/i.test(item.jobOfferTitle))
+      .map(toKakaoJob)
+
     // ── 전체 합산 + 헤드헌팅 회사 제외
-    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs, ...wishketJobs, ...freemoaJobs]
+    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs, ...wishketJobs, ...freemoaJobs, ...kakaoJobs]
       .filter((job) => !COMPANY_BLOCK_PATTERNS.some((p) => p.test(job.company.name)))
 
     return NextResponse.json({
@@ -888,6 +945,7 @@ export async function GET() {
         jobkorea: jkJobs.length,
         wishket: wishketJobs.length,
         freemoa: freemoaJobs.length,
+        kakao: kakaoJobs.length,
       },
       fetched_at: new Date().toISOString(),
     })

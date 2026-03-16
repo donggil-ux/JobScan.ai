@@ -18,6 +18,7 @@ const PLATFORM_LABEL: Record<string, string> = {
   saramin: '사람인',
   wishket: '위시켓',
   freemoa: '프리모아',
+  kakao: '카카오',
 }
 
 const PLATFORM_COLOR: Record<string, string> = {
@@ -28,6 +29,7 @@ const PLATFORM_COLOR: Record<string, string> = {
   saramin: 'bg-green-50 text-green-600',
   wishket: 'bg-yellow-50 text-yellow-600',
   freemoa: 'bg-pink-50 text-pink-600',
+  kakao: 'bg-yellow-50 text-yellow-700',
 }
 
 function getMatchColor(score: number): string {
