@@ -1,4 +1,4 @@
-export type Platform = 'wanted' | 'remember' | 'surfit' | 'jobkorea' | 'saramin' | 'wishket'
+export type Platform = 'wanted' | 'remember' | 'surfit' | 'jobkorea' | 'saramin' | 'wishket' | 'freemoa'
 export type CompanySize = '대기업' | '중견기업' | '중소/스타트업'
 export type EmploymentType = '정규직' | '계약직' | '프리랜서'
 export type RoleType = 'IC' | 'Lead'
