@@ -617,7 +617,7 @@ function parseWishketHTML(html: string): WishketCard[] {
 function isWishketDesignProject(card: WishketCard): boolean {
   const text = `${card.title} ${card.role}`
   // 디자인 직군 키워드 필수
-  if (!SARAMIN_MUST_HAVE.some((p) => p.test(text)) && !/디자이너|UX|UI|Figma/i.test(text)) return false
+  if (!SARAMIN_MUST_HAVE.some((p) => p.test(text)) && !/디자이너|디자인|UX|UI|Figma/i.test(text)) return false
   // 하드 블록
   if (HARD_BLOCK_PATTERNS.some((p) => p.test(text))) return false
   // 비관련 직군 블록
@@ -655,7 +655,7 @@ function toWishketJob(card: WishketCard): Job {
 
 // 위시켓 HTML fetch (디자인 카테고리)
 async function fetchWishketPage(page: number): Promise<string> {
-  const url = `https://www.wishket.com/project/?category=design&page=${page}`
+  const url = `https://www.wishket.com/project/?page=${page}`
   const res = await fetch(url, { headers: WISHKET_HEADERS, next: { revalidate: 1800 } })
   if (!res.ok) throw new Error(`Wishket ${res.status}`)
   return res.text()
