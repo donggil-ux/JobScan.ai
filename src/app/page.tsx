@@ -68,11 +68,13 @@ export default function HomePage() {
         const companyMatch = job.company.name.toLowerCase().includes(q)
         if (!titleMatch && !companyMatch) return false
       }
-      // 경력 필터
-      if (filters.experience === '5-7') {
-        if (!(job.experience_req.min_years >= 5 && job.experience_req.min_years <= 7)) return false
-      } else if (filters.experience === '8plus') {
-        if (job.experience_req.min_years < 8) return false
+      // 경력 필터 (프리랜서 플랫폼은 경력 개념 없으므로 제외)
+      if (job.source_platform !== 'wishket' && job.source_platform !== 'freemoa') {
+        if (filters.experience === '5-7') {
+          if (!(job.experience_req.min_years >= 5 && job.experience_req.min_years <= 7)) return false
+        } else if (filters.experience === '8plus') {
+          if (job.experience_req.min_years < 8) return false
+        }
       }
       // 역할 필터 (IC / Lead)
       if (filters.role !== 'all') {

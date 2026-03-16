@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { Job, CompanySize, EmploymentType } from '@/types/job'
+import * as https from 'https'
 
 // ─── Wanted 요청 헤더 ───────────────────────────────────────────────────────
 const WANTED_HEADERS: Record<string, string> = {
@@ -548,6 +549,105 @@ async function fetchJobkoreaPage(query: string, page: number): Promise<string> {
   return res.text()
 }
 
+// ─── Freemoa ─────────────────────────────────────────────────────────────────
+
+interface FreemoaProject {
+  proj_idx: string
+  title: string
+  edate: string | null
+  during: string | null
+  cost_min: string | null
+  cost_max: string | null
+  workType: string | null
+  proj_filed_new: string | null
+  is_stay: string
+}
+
+// SSL 인증서 우회 HTTPS 요청 (freemoa.net 자체 서명 인증서 대응)
+function httpsPostJson(url: string, body: Record<string, unknown>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const postData = JSON.stringify(body)
+    const options: https.RequestOptions = {
+      hostname: parsed.hostname,
+      port: 443,
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      rejectUnauthorized: false,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        'X-Requested-With': 'XMLHttpRequest',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Referer': 'https://www.freemoa.net/m4/s41?code3=022',
+      },
+    }
+    const req = https.request(options, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
+    })
+    req.on('error', reject)
+    req.write(postData)
+    req.end()
+  })
+}
+
+// 프리모아 API → 프로젝트 배열 fetch
+async function fetchFreemoaPage(page: number): Promise<FreemoaProject[]> {
+  const raw = await httpsPostJson('https://www.freemoa.net/m4a/s41a', { sS: '', page })
+  const json = JSON.parse(raw)
+  const list: any[] = json?.DATA?.PROJECT?.LIST ?? []
+  return list
+    .filter((p) => {
+      const fields: string = p.proj_filed_new ?? ''
+      return fields.includes('디자인')
+    })
+    .map((p) => ({
+      proj_idx: String(p.proj_idx ?? ''),
+      title: String(p.title ?? ''),
+      edate: p.edate ? String(p.edate) : null,
+      during: p.during ? String(p.during) : null,
+      cost_min: p.cost_min ? String(p.cost_min) : null,
+      cost_max: p.cost_max ? String(p.cost_max) : null,
+      workType: p.workType ? String(p.workType) : null,
+      proj_filed_new: p.proj_filed_new ?? null,
+      is_stay: String(p.is_stay ?? '0'),
+    }))
+}
+
+// 프리모아 프로젝트 → Job 타입 변환
+function toFreemoaJob(p: FreemoaProject): Job {
+  const numId = parseInt(p.proj_idx) % 100000
+  const employment_type: EmploymentType = p.is_stay === '1' ? '계약직' : '프리랜서'
+
+  const budgetTag = p.cost_min && p.cost_max
+    ? `#${p.cost_min}~${p.cost_max}만원`
+    : p.cost_min ? `#${p.cost_min}만원~` : ''
+
+  const tags = extractTags(p.title, '')
+  if (budgetTag && tags.length < 4) tags.push(budgetTag)
+
+  return {
+    job_id: `freemoa_${p.proj_idx}`,
+    source_platform: 'freemoa',
+    company: {
+      name: '프리모아 클라이언트',
+      logo_url: '',
+      company_size: '중소/스타트업',
+    },
+    position: {
+      title: p.title,
+      url: `https://www.freemoa.net/m4/s41`,
+    },
+    employment_type,
+    experience_req: { min_years: 0, max_years: null },
+    tags,
+    deadline: p.edate,
+    match_score: getMatchScore(numId, 0),
+  }
+}
+
 // ─── Wishket ─────────────────────────────────────────────────────────────────
 
 interface WishketCard {
@@ -665,8 +765,9 @@ async function fetchWishketPage(page: number): Promise<string> {
 
 export async function GET() {
   try {
-    // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 병렬 fetch
-    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2, wkHtml1, wkHtml2] =
+    // 원티드 + 리멤버 + 사람인 + 잡코리아 + 위시켓 + 프리모아 병렬 fetch
+    const [wPage1, wPage2, remPage1, remPage2, sarHtml1, sarHtml2, jkHtml1, jkHtml2,
+           wkHtml1, wkHtml2, wkHtml3, wkHtml4, wkHtml5, fmPage1, fmPage2] =
       await Promise.all([
         fetchWantedPage('프로덕트 디자이너', 0, 20),
         fetchWantedPage('프로덕트 디자이너', 20, 20),
@@ -678,6 +779,11 @@ export async function GET() {
         fetchJobkoreaPage('UX 디자이너', 1).catch(() => ''),
         fetchWishketPage(1).catch(() => ''),
         fetchWishketPage(2).catch(() => ''),
+        fetchWishketPage(3).catch(() => ''),
+        fetchWishketPage(4).catch(() => ''),
+        fetchWishketPage(5).catch(() => ''),
+        fetchFreemoaPage(1).catch(() => [] as FreemoaProject[]),
+        fetchFreemoaPage(2).catch(() => [] as FreemoaProject[]),
       ])
 
     // ── Wanted 중복 제거 → 블록 패턴 필터 → 변환
@@ -729,7 +835,10 @@ export async function GET() {
 
     // ── 위시켓 파싱 → 중복 제거 → 필터 → 변환
     const seenWk = new Set<string>()
-    const wishketJobs: Job[] = [...parseWishketHTML(wkHtml1), ...parseWishketHTML(wkHtml2)]
+    const wishketJobs: Job[] = [
+      ...parseWishketHTML(wkHtml1), ...parseWishketHTML(wkHtml2),
+      ...parseWishketHTML(wkHtml3), ...parseWishketHTML(wkHtml4), ...parseWishketHTML(wkHtml5),
+    ]
       .filter((card) => {
         if (seenWk.has(card.id)) return false
         seenWk.add(card.id)
@@ -738,8 +847,19 @@ export async function GET() {
       .filter(isWishketDesignProject)
       .map(toWishketJob)
 
+    // ── 프리모아 중복 제거 → 변환
+    const seenFm = new Set<string>()
+    const freemoaJobs: Job[] = [...fmPage1, ...fmPage2]
+      .filter((p) => {
+        if (seenFm.has(p.proj_idx)) return false
+        seenFm.add(p.proj_idx)
+        return true
+      })
+      .filter((p) => isSaraminDesignJob(p.title) || /디자인|UX|UI|Figma/i.test(p.title))
+      .map(toFreemoaJob)
+
     // ── 전체 합산 + 헤드헌팅 회사 제외
-    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs, ...wishketJobs]
+    const jobs: Job[] = [...wantedJobs, ...rememberJobs, ...saraminJobs, ...jkJobs, ...wishketJobs, ...freemoaJobs]
       .filter((job) => !COMPANY_BLOCK_PATTERNS.some((p) => p.test(job.company.name)))
 
     return NextResponse.json({
@@ -751,6 +871,7 @@ export async function GET() {
         saramin: saraminJobs.length,
         jobkorea: jkJobs.length,
         wishket: wishketJobs.length,
+        freemoa: freemoaJobs.length,
       },
       fetched_at: new Date().toISOString(),
     })
